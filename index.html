@@ -879,7 +879,23 @@
                 grid-template-columns: 1fr;
             }
         }
-    </style>
+    
+        /* KLYVERO V2 ENHANCEMENTS */
+        .timeline-enhanced-tools{margin-left:auto;display:flex;align-items:center;gap:4px;white-space:nowrap}
+        .timeline-enhanced-tools button{min-width:28px;height:26px;padding:0 7px}
+        .zoom-readout{min-width:48px;text-align:center;font-size:10px;color:var(--klyvero-bright)}
+        .snap-on{color:#86efac!important;border-color:#22c55e!important}
+        .autosave-status{font-size:10px;color:var(--klyvero-text);margin-left:8px;display:flex;align-items:center;gap:5px}
+        .autosave-dot{width:7px;height:7px;border-radius:50%;background:#22c55e;box-shadow:0 0 7px #22c55e}
+        .keyframe-box{border:1px solid var(--klyvero-border);background:var(--klyvero-subpanel);border-radius:6px;padding:8px;margin-top:8px}
+        .keyframe-head{display:flex;justify-content:space-between;align-items:center;font-size:10px;font-weight:700;color:var(--klyvero-bright);margin-bottom:6px}
+        .keyframe-list{max-height:90px;overflow:auto;display:flex;flex-direction:column;gap:4px}
+        .keyframe-row{display:flex;align-items:center;justify-content:space-between;font-size:9px;padding:4px 5px;border:1px solid var(--klyvero-border);border-radius:4px}
+        .keyframe-row button{background:none;border:0;color:#f87171;cursor:pointer}
+        .klyvero-statusbar{height:22px;flex-shrink:0;background:var(--klyvero-header);border-top:1px solid var(--klyvero-border);display:flex;align-items:center;padding:0 8px;font-size:9px;color:var(--klyvero-text);gap:14px}
+        .shortcut-badge{opacity:.75}
+        @media(max-width:700px){.timeline-enhanced-tools .desktop-only{display:none}.autosave-status{display:none}.klyvero-statusbar{font-size:8px;gap:8px}.keyframe-box{margin-bottom:8px}}
+</style>
 </head>
 <body>
 
@@ -1165,6 +1181,11 @@
                 </div>
             </div>
 
+            <div class="keyframe-box">
+                <div class="keyframe-head"><span>Animation / Keyframes</span><button class="btn-tool" id="btnAddKeyframe">+ Keyframe</button></div>
+                <div class="keyframe-list" id="keyframeList"><span style="opacity:.6">Aucun keyframe</span></div>
+            </div>
+
             <div class="inspector-box">
                 <button class="btn-danger" id="btnDeleteSelected">Supprimer l'élément</button>
             </div>
@@ -1178,6 +1199,13 @@
             
             <div class="sequence-tabs" id="sequenceTabsContainer"></div>
             <button class="btn-add-seq" id="btnAddSequence" title="Créer une nouvelle séquence">+</button>
+            <div class="timeline-enhanced-tools">
+                <button class="btn-tool" id="btnZoomOut" title="Zoom arrière">−</button>
+                <span class="zoom-readout" id="zoomReadout">40 px/s</span>
+                <button class="btn-tool" id="btnZoomIn" title="Zoom avant">+</button>
+                <button class="btn-tool snap-on" id="btnSnap" title="Aimantation">🧲</button>
+                <span class="autosave-status"><span class="autosave-dot"></span><span id="autosaveText">Sauvegardé</span></span>
+            </div>
         </div>
         
         <div class="timeline-editor">
@@ -1203,6 +1231,8 @@
             </div>
         </div>
     </div>
+
+    <div class="klyvero-statusbar"><span>Klyvero Studio V2</span><span class="shortcut-badge">V sélection</span><span class="shortcut-badge">C rasoir</span><span class="shortcut-badge">Espace lecture</span><span class="shortcut-badge">Ctrl+D dupliquer</span><span class="shortcut-badge">Ctrl+Z annuler</span></div>
 
     <script>
         const KlyveroDB = {
@@ -2639,6 +2669,131 @@
 
             requestAnimationFrame(renderLoop);
         }
+
+
+        /* ================= KLYVERO V2 ENGINE ================= */
+        app.snapEnabled = true;
+        app.autosaveTimer = null;
+        app.autosaveInterval = 5000;
+
+        function markAutosave(text='Sauvegardé') {
+            const el=document.getElementById('autosaveText');
+            if(el) el.textContent=text;
+        }
+        const _saveCurrentProjectState = saveCurrentProjectState;
+        saveCurrentProjectState = function(){
+            _saveCurrentProjectState();
+            markAutosave('Sauvegardé');
+        };
+        function startAutosave(){
+            clearInterval(app.autosaveTimer);
+            app.autosaveTimer=setInterval(()=>{
+                if(getCurrentProject()){
+                    markAutosave('Sauvegarde...');
+                    saveCurrentProjectState();
+                }
+            },app.autosaveInterval);
+        }
+
+        function snapTime(value, movingClip=null){
+            if(!app.snapEnabled) return Math.max(0,value);
+            const step=0.05;
+            let best=Math.round(value/step)*step;
+            const targets=[0, app.currentTime];
+            if(app.activeSequence){
+                app.activeSequence.timeline.forEach(c=>{
+                    if(movingClip && c.id===movingClip.id) return;
+                    targets.push(c.startTime,c.startTime+c.duration);
+                });
+            }
+            let bestDist=Math.abs(value-best);
+            targets.forEach(t=>{const d=Math.abs(value-t);if(d<bestDist && d<0.16){best=t;bestDist=d;}});
+            return Math.max(0,Math.round(best*1000)/1000);
+        }
+
+        function duplicateSelectedClip(){
+            if(!app.selectedClipId||!app.activeSequence)return;
+            const src=app.activeSequence.timeline.find(c=>c.id===app.selectedClipId);
+            if(!src)return;
+            pushHistoryState();
+            const copy=JSON.parse(JSON.stringify(src,(k,v)=>k==='element'?undefined:v));
+            copy.id='clip_'+Date.now()+Math.random().toString(16).slice(2);
+            copy.startTime=snapTime(src.startTime+src.duration+0.1);
+            if(copy.keyframes) copy.keyframes=copy.keyframes.map(k=>({...k,time:k.time}));
+            if(copy.assetId){const p=getCurrentProject();copy.asset=p?.assets.find(a=>a.id===copy.assetId);}
+            app.activeSequence.timeline.push(copy);
+            selectClip(copy.id); saveCurrentProjectState(); showToast('Clip dupliqué');
+        }
+
+        function updateZoom(){
+            app.pxPerSecond=Math.max(10,Math.min(160,app.pxPerSecond));
+            const r=document.getElementById('zoomReadout'); if(r)r.textContent=app.pxPerSecond+' px/s';
+            renderTimeline();
+        }
+        document.getElementById('btnZoomIn').addEventListener('click',()=>{app.pxPerSecond+=10;updateZoom()});
+        document.getElementById('btnZoomOut').addEventListener('click',()=>{app.pxPerSecond-=10;updateZoom()});
+        document.getElementById('btnSnap').addEventListener('click',e=>{app.snapEnabled=!app.snapEnabled;e.currentTarget.classList.toggle('snap-on',app.snapEnabled);showToast(app.snapEnabled?'Aimantation activée':'Aimantation désactivée')});
+
+        function renderKeyframeList(){
+            const box=document.getElementById('keyframeList'); if(!box)return;
+            const c=app.activeSequence?.timeline.find(x=>x.id===app.selectedClipId);
+            if(!c||!c.keyframes?.length){box.innerHTML='<span style="opacity:.6">Aucun keyframe</span>';return;}
+            box.innerHTML='';
+            c.keyframes.sort((a,b)=>a.time-b.time).forEach((k,i)=>{
+                const row=document.createElement('div');row.className='keyframe-row';
+                row.innerHTML=`<span>${k.time.toFixed(2)}s · X ${Math.round(k.posX)} · Y ${Math.round(k.posY)} · ${Math.round(k.scale)}%</span><button title="Supprimer">✕</button>`;
+                row.querySelector('button').onclick=()=>{pushHistoryState();c.keyframes.splice(i,1);renderKeyframeList();saveCurrentProjectState()};
+                row.onclick=(e)=>{if(e.target.tagName!=='BUTTON'){app.currentTime=c.startTime+k.time;app.needsCanvasUpdate=true;updateUIFast()}};
+                box.appendChild(row);
+            });
+        }
+        document.getElementById('btnAddKeyframe').addEventListener('click',()=>{
+            const c=app.activeSequence?.timeline.find(x=>x.id===app.selectedClipId);if(!c)return;
+            const t=Math.max(0,Math.min(c.duration,app.currentTime-c.startTime));
+            pushHistoryState();
+            c.keyframes=c.keyframes||[];
+            const k={time:t,posX:c.transform.posX,posY:c.transform.posY,scale:c.scale||100,rotation:c.transform.rotation||0};
+            const existing=c.keyframes.findIndex(x=>Math.abs(x.time-t)<0.05);
+            if(existing>=0)c.keyframes[existing]=k;else c.keyframes.push(k);
+            renderKeyframeList();saveCurrentProjectState();showToast('Keyframe ajouté');
+        });
+        const _selectClip=selectClip;
+        selectClip=function(id){_selectClip(id);renderKeyframeList()};
+
+        function interpolateKeyframes(c){
+            if(!c.keyframes||!c.keyframes.length)return;
+            const t=app.currentTime-c.startTime;
+            const ks=[...c.keyframes].sort((a,b)=>a.time-b.time);
+            if(t<=ks[0].time){Object.assign(c.transform,{posX:ks[0].posX,posY:ks[0].posY,rotation:ks[0].rotation});c.scale=ks[0].scale;return;}
+            if(t>=ks[ks.length-1].time){const k=ks[ks.length-1];Object.assign(c.transform,{posX:k.posX,posY:k.posY,rotation:k.rotation});c.scale=k.scale;return;}
+            for(let i=0;i<ks.length-1;i++){
+                const a=ks[i],b=ks[i+1];if(t>=a.time&&t<=b.time){const p=(t-a.time)/(b.time-a.time);const lerp=(x,y)=>x+(y-x)*p;c.transform.posX=lerp(a.posX,b.posX);c.transform.posY=lerp(a.posY,b.posY);c.transform.rotation=lerp(a.rotation,b.rotation);c.scale=lerp(a.scale,b.scale);break;}
+            }
+        }
+        const _renderFrameV2=renderFrame;
+        renderFrame=function(){
+            const seq=app.activeSequence;
+            const snapshots=[];
+            if(seq)seq.timeline.forEach(c=>{if(c.keyframes?.length){snapshots.push([c,c.transform.posX,c.transform.posY,c.transform.rotation,c.scale]);interpolateKeyframes(c)}});
+            _renderFrameV2();
+            snapshots.forEach(([c,x,y,r,s])=>{c.transform.posX=x;c.transform.posY=y;c.transform.rotation=r;c.scale=s});
+        };
+
+        // Keyboard workflow improvements
+        window.addEventListener('keydown',e=>{
+            if(['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName))return;
+            if(e.code==='Space'){e.preventDefault();togglePlay();}
+            if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='d'){e.preventDefault();duplicateSelectedClip();}
+            if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();deleteSelectedClip();}
+            if(e.key==='ArrowLeft'){app.currentTime=Math.max(0,app.currentTime-(e.shiftKey?1:1/30));app.needsCanvasUpdate=true;}
+            if(e.key==='ArrowRight'){app.currentTime+=e.shiftKey?1:1/30;app.needsCanvasUpdate=true;}
+            if(e.key.toLowerCase()==='s'&&!e.ctrlKey&&!e.metaKey){setTool('razor');}
+        });
+
+        // Snap-aware drag replacement for the timeline: patch clip positions after every render.
+        const _renderTimelineV2=renderTimeline;
+        renderTimeline=function(){_renderTimelineV2();renderKeyframeList();};
+        startAutosave();
 
         window.addEventListener('DOMContentLoaded', bootSystemPerformance);
     </script>
