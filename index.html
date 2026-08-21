@@ -170,6 +170,39 @@
             border-color: var(--klyvero-accent);
             align-items: center;
             text-align: center;
+            max-width: 460px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .pro-preview-box {
+            width: 100%;
+            height: 120px;
+            background: #090a0f;
+            border: 1px solid var(--klyvero-border);
+            border-radius: 8px;
+            margin: 10px 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .pro-preview-glow {
+            position: absolute;
+            width: 100px;
+            height: 100px;
+            background: var(--klyvero-accent);
+            filter: blur(50px);
+            opacity: 0.5;
+            animation: pulse 3s infinite alternate;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(0.8); opacity: 0.3; }
+            100% { transform: scale(1.4); opacity: 0.7; }
         }
 
         .dialog-title {
@@ -551,6 +584,7 @@
             border-radius: 4px;
             overflow: hidden;
             position: relative;
+            touch-action: none;
         }
 
         canvas#viewport {
@@ -865,11 +899,19 @@
     <div class="pro-modal-overlay" id="proModalOverlay">
         <div class="pro-card">
             <span class="pro-badge">LIMITE ATTEINTE</span>
-            <div class="dialog-title" style="font-size: 16px;">Durée Maximale Dépassée</div>
+            <div class="dialog-title" style="font-size: 16px; margin-top: 6px;">Durée Maximale Dépassée</div>
+            
+            <div class="pro-preview-box">
+                <div class="pro-preview-glow"></div>
+                <span style="font-size: 28px; z-index: 1;">⚡</span>
+                <span style="font-size: 11px; font-weight: 800; color: #fff; z-index: 1; margin-top: 4px;">KLYVERO PRO ENGINE</span>
+                <span style="font-size: 9px; color: var(--klyvero-text); z-index: 1;">Rendu 4K & Durée Illimitée</span>
+            </div>
+
             <p style="color: var(--klyvero-text); font-size: 12px; line-height: 1.5;">
-                Votre projet dépasse la limite autorisée de **60 minutes**.
+                Votre projet dépasse la limite de **60 minutes**. Débloquez la timeline illimitée et les exports haute fidélité.
             </p>
-            <button class="btn-primary-large" style="width: 100%; background: linear-gradient(90deg, var(--klyvero-accent), #818cf8);" onclick="document.getElementById('proModalOverlay').style.display='none'">
+            <button class="btn-primary-large" style="width: 100%; background: linear-gradient(90deg, var(--klyvero-accent), #818cf8); margin-top: 5px;" onclick="document.getElementById('proModalOverlay').style.display='none'">
                 Passer à la version Klyvero Pro
             </button>
             <button class="btn-dialog btn-dialog-cancel" style="width: 100%;" onclick="document.getElementById('proModalOverlay').style.display='none'">
@@ -944,7 +986,7 @@
                 <div class="tab active" id="currentProjectTitleDisplay">Programme - Klyvero</div>
             </div>
             <div class="monitor-container">
-                <div class="monitor-wrapper">
+                <div class="monitor-wrapper" id="monitorWrapper">
                     <canvas id="viewport" width="960" height="540"></canvas>
                 </div>
             </div>
@@ -1114,6 +1156,12 @@
                     req.onsuccess = (e) => resolve(e.target.result);
                     req.onerror = (e) => reject(e);
                 });
+            },
+            async deleteBlob(id) {
+                return new Promise((resolve, reject) => {
+                    const tx = this.db.transaction('media_blobs', 'readwrite');
+                    tx.objectStore('media_blobs').delete(id).onsuccess = () => resolve();
+                });
             }
         };
 
@@ -1129,7 +1177,8 @@
             fps: 30,
             pxPerSecond: 40,
             activeTool: 'select',
-            needsCanvasUpdate: true
+            needsCanvasUpdate: true,
+            isResizingCanvasClip: false
         };
 
         const MAX_ALLOWED_SECONDS = 3600;
@@ -1142,9 +1191,9 @@
             await KlyveroDB.init();
             initTheme();
             initMenuDropdowns();
+            initCanvasInteraction();
             loadProjectsFromStorage();
             
-            // Lancement de la boucle de rendu optimisée (RAF)
             requestAnimationFrame(renderLoop);
 
             const loader = document.getElementById('appLoader');
@@ -1216,7 +1265,14 @@
         }
 
         function saveProjectsToStorage() {
-            localStorage.setItem('klyvero_projects', JSON.stringify(app.projects));
+            const cleanProjects = app.projects.map(p => ({
+                ...p,
+                assets: p.assets.map(a => {
+                    const { element, ...rest } = a;
+                    return rest;
+                })
+            }));
+            localStorage.setItem('klyvero_projects', JSON.stringify(cleanProjects));
         }
 
         function renderHomeScreen() {
@@ -1292,6 +1348,10 @@
         window.deleteProject = function(id, e) {
             e.stopPropagation();
             showCustomDialog({ title: 'Supprimer ce projet ?', defaultValue: null, isDanger: true }, () => {
+                const targetProj = app.projects.find(p => p.id === id);
+                if (targetProj) {
+                    targetProj.assets.forEach(a => KlyveroDB.deleteBlob(a.id));
+                }
                 app.projects = app.projects.filter(p => p.id !== id);
                 saveProjectsToStorage();
                 renderHomeScreen();
@@ -1428,7 +1488,7 @@
             if (!proj) return;
 
             Array.from(files).forEach(async (file) => {
-                const assetId = 'asset_' + Date.now() + Math.random();
+                const assetId = 'asset_' + Date.now() + Math.random().toString().substring(2, 6);
                 const tempMedia = document.createElement(file.type.startsWith('video/') ? 'video' : 'audio');
                 const tempUrl = URL.createObjectURL(file);
                 tempMedia.src = tempUrl;
@@ -1509,6 +1569,7 @@
             if (!proj) return;
             proj.assets = proj.assets.filter(a => a.id !== assetId);
             proj.sequences.forEach(seq => seq.timeline = seq.timeline.filter(c => c.assetId !== assetId));
+            KlyveroDB.deleteBlob(assetId);
             renderAssetList();
             renderTimeline();
             app.needsCanvasUpdate = true;
@@ -1531,7 +1592,7 @@
             }
 
             const clip = {
-                id: 'clip_' + Date.now(), assetId: asset.id, asset: asset, type: asset.type, track: targetTrack,
+                id: 'clip_' + Date.now() + Math.random().toString().substring(2, 6), assetId: asset.id, asset: asset, type: asset.type, track: targetTrack,
                 startTime: startTime, duration: asset.duration, offsetTime: 0, width: asset.width || 960, height: asset.height || 540,
                 scale: 100, transform: { posX: 0, posY: 0, rotation: 0 }, color: { filter: 'none' }
             };
@@ -1545,8 +1606,12 @@
 
         function addTextClip() {
             if (!app.activeSequence) return;
+            if ((app.currentTime + 4) > MAX_ALLOWED_SECONDS) {
+                triggerProModal();
+                return;
+            }
             const clip = {
-                id: 'clip_' + Date.now(), type: 'text', track: 'TXT', startTime: app.currentTime, duration: 4,
+                id: 'clip_' + Date.now() + Math.random().toString().substring(2, 6), type: 'text', track: 'TXT', startTime: app.currentTime, duration: 4,
                 text: 'Klyvero Title', fontSize: 48, colorHex: '#ffffff', width: 400, height: 100, scale: 100,
                 transform: { posX: 0, posY: 0, rotation: 0 }, color: { filter: 'none' }
             };
@@ -1581,7 +1646,6 @@
                 node.appendChild(handleL);
                 node.appendChild(handleR);
 
-                // --- Événements Tactiles & Souris Unifiés ---
                 const startDrag = (e, isLeft, isRight) => {
                     e.stopPropagation();
                     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
@@ -1599,8 +1663,16 @@
                                 clip.duration = origDur - delta;
                             }
                         } else if (isRight) {
+                            if (origStart + origDur + delta > MAX_ALLOWED_SECONDS) {
+                                triggerProModal();
+                                return;
+                            }
                             if (origDur + delta > 0.2) clip.duration = origDur + delta;
                         } else {
+                            if (origStart + delta + origDur > MAX_ALLOWED_SECONDS) {
+                                triggerProModal();
+                                return;
+                            }
                             clip.startTime = Math.max(0, origStart + delta);
                         }
                         
@@ -1723,7 +1795,7 @@
                 clip.duration = cutPoint;
 
                 const newClip = JSON.parse(JSON.stringify(clip));
-                newClip.id = 'clip_' + Date.now() + Math.random();
+                newClip.id = 'clip_' + Date.now() + Math.random().toString().substring(2, 6);
                 newClip.startTime = app.currentTime;
                 newClip.duration = remainingDuration;
                 newClip.offsetTime = (clip.offsetTime || 0) + cutPoint;
@@ -1854,7 +1926,108 @@
             }, 30);
         }
 
-        // --- OPTIMISATION DU MOTEUR DE RENDU (BOUCLE CONTINU RAF) ---
+        // --- INTERACTION TACTILE ET CANVAS POUR REDIMENSIONNER ---
+        function initCanvasInteraction() {
+            const monitorWrapper = document.getElementById('monitorWrapper');
+            let isDragging = false;
+            let dragType = 'move'; // 'move' ou 'resize'
+            let startX = 0, startY = 0;
+            let initialW = 0, initialH = 0;
+            let initialPosX = 0, initialPosY = 0;
+
+            const getCanvasCoords = (e) => {
+                const rect = canvas.getBoundingClientRect();
+                const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                const scaleX = canvas.width / rect.width;
+                const scaleY = canvas.height / rect.height;
+                return {
+                    x: (clientX - rect.left) * scaleX,
+                    y: (clientY - rect.top) * scaleY
+                };
+            };
+
+            const getSelectedClip = () => {
+                if (!app.selectedClipId || !app.activeSequence) return null;
+                return app.activeSequence.timeline.find(c => c.id === app.selectedClipId);
+            };
+
+            const startInteraction = (e) => {
+                const clip = getSelectedClip();
+                if (!clip) return;
+
+                const coords = getCanvasCoords(e);
+                const centerX = canvas.width / 2 + clip.transform.posX;
+                const centerY = canvas.height / 2 + clip.transform.posY;
+                const hw = clip.width / 2;
+                const hh = clip.height / 2;
+
+                // Vérifier si le clic touche la poignée de redimensionnement (Coin bas-droit)
+                const handleX = centerX + hw;
+                const handleY = centerY + hh;
+                const distToHandle = Math.hypot(coords.x - handleX, coords.y - handleY);
+
+                if (distToHandle <= 25) {
+                    isDragging = true;
+                    dragType = 'resize';
+                    startX = coords.x;
+                    startY = coords.y;
+                    initialW = clip.width;
+                    initialH = clip.height;
+                    e.preventDefault();
+                } else if (coords.x >= centerX - hw && coords.x <= centerX + hw &&
+                           coords.y >= centerY - hh && coords.y <= centerY + hh) {
+                    isDragging = true;
+                    dragType = 'move';
+                    startX = coords.x;
+                    startY = coords.y;
+                    initialPosX = clip.transform.posX;
+                    initialPosY = clip.transform.posY;
+                    e.preventDefault();
+                }
+            };
+
+            const moveInteraction = (e) => {
+                if (!isDragging) return;
+                const clip = getSelectedClip();
+                if (!clip) return;
+
+                const coords = getCanvasCoords(e);
+                const dx = coords.x - startX;
+                const dy = coords.y - startY;
+
+                if (dragType === 'resize') {
+                    clip.width = Math.max(20, initialW + dx);
+                    clip.height = Math.max(20, initialH + dy);
+                    document.getElementById('widthInput').value = Math.round(clip.width);
+                    document.getElementById('heightInput').value = Math.round(clip.height);
+                } else if (dragType === 'move') {
+                    clip.transform.posX = initialPosX + dx;
+                    clip.transform.posY = initialPosY + dy;
+                    document.getElementById('posXRange').value = clip.transform.posX;
+                    document.getElementById('posYRange').value = clip.transform.posY;
+                }
+
+                app.needsCanvasUpdate = true;
+            };
+
+            const stopInteraction = () => {
+                if (isDragging) {
+                    isDragging = false;
+                    saveCurrentProjectState();
+                }
+            };
+
+            monitorWrapper.addEventListener('mousedown', startInteraction);
+            window.addEventListener('mousemove', moveInteraction);
+            window.addEventListener('mouseup', stopInteraction);
+
+            monitorWrapper.addEventListener('touchstart', startInteraction, { passive: false });
+            window.addEventListener('touchmove', moveInteraction, { passive: true });
+            window.addEventListener('touchend', stopInteraction);
+        }
+
+        // --- OPTIMISATION DU MOTEUR DE RENDU SANS LAGS (VideoSync Engine) ---
         function renderLoop(timestamp) {
             if (app.isPlaying) {
                 if (!app.lastFrameTime) app.lastFrameTime = timestamp;
@@ -1903,11 +2076,16 @@
                         const video = clip.asset.element;
                         const internalTime = (app.currentTime - clip.startTime) + clip.offsetTime;
                         
-                        if (Math.abs(video.currentTime - internalTime) > 0.05) {
+                        // Synchronisation ultra-fine sans lag de buffering
+                        if (Math.abs(video.currentTime - internalTime) > 0.15) {
                             video.currentTime = internalTime;
                         }
-                        if (app.isPlaying && video.paused) video.play().catch(() => {});
-                        else if (!app.isPlaying && !video.paused) video.pause();
+
+                        if (app.isPlaying && video.paused) {
+                            video.play().catch(() => {});
+                        } else if (!app.isPlaying && !video.paused) {
+                            video.pause();
+                        }
 
                         if (video.readyState >= 2) ctx.drawImage(video, -drawW / 2, -drawH / 2, drawW, drawH);
                     } else if (clip.type === 'image' && clip.asset && clip.asset.element) {
@@ -1920,10 +2098,20 @@
                         ctx.fillText(clip.text, 0, 0);
                     }
 
+                    // Encadrement de sélection & Poignée de redimensionnement (Resize Handle)
                     if (app.selectedClipId === clip.id) {
                         ctx.strokeStyle = '#6366f1';
                         ctx.lineWidth = 2;
                         ctx.strokeRect(-drawW / 2, -drawH / 2, drawW, drawH);
+
+                        // Dessin de la poignée de taille en bas à droite
+                        ctx.fillStyle = '#6366f1';
+                        ctx.beginPath();
+                        ctx.arc(drawW / 2, drawH / 2, 6, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.strokeStyle = '#ffffff';
+                        ctx.lineWidth = 1;
+                        ctx.stroke();
                     }
 
                     ctx.restore();
@@ -1931,7 +2119,6 @@
             });
         }
 
-        // Accélération matérielle DOM (GPU translate3d) pour le Curseur de Lecture
         function updateUIFast() {
             const posX = app.currentTime * app.pxPerSecond;
             document.getElementById('playheadHead').style.transform = `translate3d(${posX}px, 0, 0)`;
