@@ -63,7 +63,6 @@
             transition: background-color 0.2s, color 0.2s;
         }
 
-        /* --- GPU Acceleration Hints --- */
         .clip-node, .playhead-line, .playhead-head, #viewport {
             will-change: transform;
             transform: translateZ(0);
@@ -849,7 +848,6 @@
 
         input[type="file"] { display: none; }
 
-        /* --- OPTIMISATION INTERFACE MOBILE (Responsive Design) --- */
         @media (max-width: 768px) {
             header { height: 40px; padding: 0 6px; }
             .menu-btn { padding: 4px 6px; font-size: 10px; }
@@ -915,7 +913,7 @@
                 <div class="export-details-row"><span>Résolution:</span> <span>1920x1080 (FHD)</span></div>
                 <div class="export-details-row"><span>Framerate:</span> <span id="expDetailsFps">30 FPS</span></div>
                 <div class="export-details-row"><span>Frames rendues:</span> <span id="expDetailsFrames">0 / 0</span></div>
-                <div class="export-details-row"><span>Format / Codec:</span> <span>MP4 / H.264</span></div>
+                <div class="export-details-row"><span>Format / Codec:</span> <span>WebM / VP8 (MPEG Compatible)</span></div>
                 <div class="export-details-row"><span>Bitrate:</span> <span>8 Mbps</span></div>
             </div>
         </div>
@@ -961,6 +959,7 @@
     <header>
         <div class="menu-bar">
             <span class="app-logo" id="homeBtn">Klyvero</span>
+            <button class="menu-btn" id="mGoHome" style="font-weight: bold; color: var(--klyvero-bright);">🏠 Accueil</button>
             <div class="menu-dropdown" id="menuEdition">
                 <button class="menu-btn">Édition</button>
                 <div class="dropdown-content">
@@ -1018,6 +1017,8 @@
             <div class="monitor-controls">
                 <div class="timecode" id="tcDisplay">00:00:00:00</div>
                 <div class="ctrl-group">
+                    <button class="btn-tool" id="btnMute" title="Activer/Couper le son">🔊</button>
+                    <input type="range" id="globalVolumeRange" min="0" max="1" step="0.05" value="1" style="width: 60px; accent-color: var(--klyvero-accent);" title="Volume du son">
                     <button class="btn-tool" id="btnPlay">▶</button>
                     <button class="btn-tool" id="btnCut">✂️</button>
                     <button class="btn-tool" id="btnAddText">📝</button>
@@ -1063,6 +1064,18 @@
                 <div class="control-row">
                     <label>Rotation</label>
                     <input type="range" id="rotRange" min="-180" max="180" value="0">
+                </div>
+            </div>
+
+            <div class="inspector-box" id="imageOptionsBox">
+                <div class="inspector-title">Taille de l'image importée</div>
+                <div class="control-row">
+                    <label>Larg. Img</label>
+                    <input type="number" id="imgDefaultWidth" value="400" min="10" max="3840">
+                </div>
+                <div class="control-row">
+                    <label>Haut. Img</label>
+                    <input type="number" id="imgDefaultHeight" value="300" min="10" max="2160">
                 </div>
             </div>
 
@@ -1203,7 +1216,10 @@
             pxPerSecond: 40,
             activeTool: 'select',
             needsCanvasUpdate: true,
-            isResizingCanvasClip: false
+            isResizingCanvasClip: false,
+            isMuted: false,
+            globalVolume: 1.0,
+            audioCtx: null
         };
 
         const MAX_ALLOWED_SECONDS = 3600;
@@ -1217,6 +1233,7 @@
             initTheme();
             initMenuDropdowns();
             initCanvasInteraction();
+            initAudioControls();
             loadProjectsFromStorage();
             
             requestAnimationFrame(renderLoop);
@@ -1391,7 +1408,8 @@
             if (asset.type === 'video') {
                 const video = document.createElement('video');
                 video.src = asset.url;
-                video.muted = true;
+                video.muted = app.isMuted;
+                video.volume = app.globalVolume;
                 video.playsInline = true;
                 video.preload = "auto";
                 asset.element = video;
@@ -1402,6 +1420,8 @@
             } else if (asset.type === 'audio') {
                 const audio = new Audio();
                 audio.src = asset.url;
+                audio.muted = app.isMuted;
+                audio.volume = app.globalVolume;
                 audio.preload = "auto";
                 asset.element = audio;
             }
@@ -1433,11 +1453,15 @@
             renderAssetList();
         }
 
-        document.getElementById('homeBtn').addEventListener('click', () => {
+        function returnToHome() {
             saveCurrentProjectState();
             if (app.isPlaying) togglePlay();
+            pauseAllMedia();
             renderHomeScreen();
-        });
+        }
+
+        document.getElementById('homeBtn').addEventListener('click', returnToHome);
+        document.getElementById('mGoHome').addEventListener('click', returnToHome);
 
         function saveCurrentProjectState() {
             const proj = getCurrentProject();
@@ -1533,7 +1557,8 @@
                     if (isVideo) {
                         const video = document.createElement('video');
                         video.src = tempUrl;
-                        video.muted = true;
+                        video.muted = app.isMuted;
+                        video.volume = app.globalVolume;
                         video.playsInline = true;
                         video.preload = "auto";
                         
@@ -1547,7 +1572,7 @@
                         img.onload = () => {
                             proj.assets.push({
                                 id: assetId, name: file.name, type: 'image', url: tempUrl, duration: 5,
-                                width: img.width || 960, height: img.height || 540, element: img
+                                width: img.width || 400, height: img.height || 300, element: img
                             });
                             renderAssetList();
                             saveCurrentProjectState();
@@ -1555,6 +1580,8 @@
                     } else if (isAudio) {
                         const audio = new Audio();
                         audio.src = tempUrl;
+                        audio.muted = app.isMuted;
+                        audio.volume = app.globalVolume;
                         audio.preload = "auto";
                         proj.assets.push({ id: assetId, name: file.name, type: 'audio', url: tempUrl, duration: duration, element: audio });
                     }
@@ -1616,9 +1643,19 @@
                 return;
             }
 
+            let initialW = asset.width || 960;
+            let initialH = asset.height || 540;
+
+            if (asset.type === 'image') {
+                const prefW = parseFloat(document.getElementById('imgDefaultWidth').value) || 400;
+                const prefH = parseFloat(document.getElementById('imgDefaultHeight').value) || 300;
+                initialW = prefW;
+                initialH = prefH;
+            }
+
             const clip = {
                 id: 'clip_' + Date.now() + Math.random().toString().substring(2, 6), assetId: asset.id, asset: asset, type: asset.type, track: targetTrack,
-                startTime: startTime, duration: asset.duration, offsetTime: 0, width: asset.width || 960, height: asset.height || 540,
+                startTime: startTime, duration: asset.duration, offsetTime: 0, width: initialW, height: initialH,
                 scale: 100, transform: { posX: 0, posY: 0, rotation: 0 }, color: { filter: 'none' }
             };
 
@@ -1649,6 +1686,37 @@
 
         document.getElementById('btnAddText').addEventListener('click', addTextClip);
         document.getElementById('mAddTitle').addEventListener('click', addTextClip);
+
+        function initAudioControls() {
+            const muteBtn = document.getElementById('btnMute');
+            const volRange = document.getElementById('globalVolumeRange');
+
+            muteBtn.addEventListener('click', () => {
+                app.isMuted = !app.isMuted;
+                muteBtn.innerText = app.isMuted ? '🔇' : '🔊';
+                applyVolumeToAll();
+            });
+
+            volRange.addEventListener('input', (e) => {
+                app.globalVolume = parseFloat(e.target.value);
+                if (app.globalVolume > 0 && app.isMuted) {
+                    app.isMuted = false;
+                    muteBtn.innerText = '🔊';
+                }
+                applyVolumeToAll();
+            });
+        }
+
+        function applyVolumeToAll() {
+            const proj = getCurrentProject();
+            if (!proj) return;
+            proj.assets.forEach(a => {
+                if (a.element && (a.type === 'video' || a.type === 'audio')) {
+                    a.element.muted = app.isMuted;
+                    a.element.volume = app.globalVolume;
+                }
+            });
+        }
 
         function renderTimeline() {
             document.querySelectorAll('.clip-node').forEach(n => n.remove());
@@ -1854,10 +1922,25 @@
             });
         });
 
+        function pauseAllMedia() {
+            const proj = getCurrentProject();
+            if (!proj) return;
+            proj.assets.forEach(a => {
+                if (a.element && typeof a.element.pause === 'function') {
+                    a.element.pause();
+                }
+            });
+        }
+
         function togglePlay() {
             app.isPlaying = !app.isPlaying;
             document.getElementById('btnPlay').innerText = app.isPlaying ? '⏸' : '▶';
-            if (app.isPlaying) app.lastFrameTime = performance.now();
+            if (app.isPlaying) {
+                app.lastFrameTime = performance.now();
+                applyVolumeToAll();
+            } else {
+                pauseAllMedia();
+            }
         }
 
         document.getElementById('btnPlay').addEventListener('click', togglePlay);
@@ -1917,7 +2000,7 @@
             let totalDuration = 0;
             app.activeSequence.timeline.forEach(c => { if ((c.startTime + c.duration) > totalDuration) totalDuration = c.startTime + c.duration; });
 
-            showCustomDialog({ title: 'Exporter le projet', defaultValue: 'Mon_Montage.mp4' }, (fileName) => {
+            showCustomDialog({ title: 'Exporter le projet', defaultValue: 'Mon_Montage.webm' }, (fileName) => {
                 if (fileName) runExportProcess(totalDuration, fileName);
             });
         });
@@ -1930,6 +2013,37 @@
             
             overlay.style.display = 'flex';
             if (app.isPlaying) togglePlay();
+
+            const canvasStream = canvas.captureStream(30);
+            let mediaRecorder;
+            const chunks = [];
+
+            try {
+                mediaRecorder = new MediaRecorder(canvasStream, { mimeType: 'video/webm;codecs=vp8' });
+            } catch (e) {
+                mediaRecorder = new MediaRecorder(canvasStream);
+            }
+
+            mediaRecorder.ondataavailable = (e) => {
+                if (e.data.size > 0) chunks.push(e.data);
+            };
+
+            mediaRecorder.onstop = () => {
+                const blob = new Blob(chunks, { type: 'video/webm' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                let name = fileName.endsWith('.webm') || fileName.endsWith('.mp4') ? fileName : fileName + '.webm';
+                a.download = name;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                overlay.style.display = 'none';
+                showToast("Exportation multimédia réalisée avec succès !");
+            };
+
+            mediaRecorder.start();
 
             let currentStep = 0;
             const totalSteps = Math.max(1, Math.ceil(totalDuration * app.fps));
@@ -1946,38 +2060,16 @@
                 if (currentStep >= totalSteps) {
                     clearInterval(interval);
                     setTimeout(() => {
-                        overlay.style.display = 'none';
-                        downloadExportedFile(fileName);
-                        showToast("Exportation terminée et installée !");
-                    }, 500);
+                        mediaRecorder.stop();
+                    }, 300);
                 }
             }, 30);
         }
 
-        function downloadExportedFile(filename) {
-            const proj = getCurrentProject();
-            const exportData = JSON.stringify({
-                project: proj ? proj.name : 'Unassigned',
-                exportedAt: new Date().toISOString(),
-                sequence: app.activeSequence
-            }, null, 2);
-
-            const blob = new Blob([exportData], { type: 'video/mp4' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = filename.endsWith('.mp4') ? filename : filename + '.mp4';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-        }
-
-        // --- INTERACTION TACTILE ET CANVAS POUR REDIMENSIONNER ---
         function initCanvasInteraction() {
             const monitorWrapper = document.getElementById('monitorWrapper');
             let isDragging = false;
-            let dragType = 'move'; // 'move' ou 'resize'
+            let dragType = 'move';
             let startX = 0, startY = 0;
             let initialW = 0, initialH = 0;
             let initialPosX = 0, initialPosY = 0;
@@ -2009,7 +2101,6 @@
                 const hw = clip.width / 2;
                 const hh = clip.height / 2;
 
-                // Vérifier si le clic touche la poignée de redimensionnement (Coin bas-droit)
                 const handleX = centerX + hw;
                 const handleY = centerY + hh;
                 const distToHandle = Math.hypot(coords.x - handleX, coords.y - handleY);
@@ -2074,7 +2165,6 @@
             window.addEventListener('touchend', stopInteraction);
         }
 
-        // --- OPTIMISATION DU MOTEUR DE RENDU SANS LAGS (VideoSync Engine) ---
         function renderLoop(timestamp) {
             if (app.isPlaying) {
                 if (!app.lastFrameTime) app.lastFrameTime = timestamp;
@@ -2099,7 +2189,7 @@
 
             if (!app.activeSequence) return;
 
-            const trackOrder = ['V1', 'V2', 'TXT'];
+            const trackOrder = ['A1', 'V1', 'V2', 'TXT'];
 
             trackOrder.forEach(trackName => {
                 const activeClips = app.activeSequence.timeline.filter(clip => 
@@ -2109,6 +2199,19 @@
                 );
 
                 activeClips.forEach(clip => {
+                    if (clip.type === 'audio' && clip.asset && clip.asset.element) {
+                        const audio = clip.asset.element;
+                        const internalTime = (app.currentTime - clip.startTime) + clip.offsetTime;
+                        audio.muted = app.isMuted;
+                        audio.volume = app.globalVolume;
+                        if (Math.abs(audio.currentTime - internalTime) > 0.15) {
+                            audio.currentTime = internalTime;
+                        }
+                        if (app.isPlaying && audio.paused) audio.play().catch(() => {});
+                        else if (!app.isPlaying && !audio.paused) audio.pause();
+                        return;
+                    }
+
                     ctx.save();
                     const centerX = canvas.width / 2 + clip.transform.posX;
                     const centerY = canvas.height / 2 + clip.transform.posY;
@@ -2123,7 +2226,9 @@
                         const video = clip.asset.element;
                         const internalTime = (app.currentTime - clip.startTime) + clip.offsetTime;
                         
-                        // Synchronisation ultra-fine sans lag de buffering
+                        video.muted = app.isMuted;
+                        video.volume = app.globalVolume;
+
                         if (Math.abs(video.currentTime - internalTime) > 0.15) {
                             video.currentTime = internalTime;
                         }
@@ -2145,13 +2250,11 @@
                         ctx.fillText(clip.text, 0, 0);
                     }
 
-                    // Encadrement de sélection & Poignée de redimensionnement (Resize Handle)
                     if (app.selectedClipId === clip.id) {
                         ctx.strokeStyle = '#6366f1';
                         ctx.lineWidth = 2;
                         ctx.strokeRect(-drawW / 2, -drawH / 2, drawW, drawH);
 
-                        // Dessin de la poignée de taille en bas à droite
                         ctx.fillStyle = '#6366f1';
                         ctx.beginPath();
                         ctx.arc(drawW / 2, drawH / 2, 6, 0, Math.PI * 2);
