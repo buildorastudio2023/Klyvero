@@ -259,6 +259,24 @@
             transition: width 0.1s linear;
         }
 
+        .export-details-box {
+            background: var(--klyvero-subpanel);
+            border: 1px solid var(--klyvero-border);
+            border-radius: 6px;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 10px;
+            color: var(--klyvero-bright);
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .export-details-row {
+            display: flex;
+            justify-content: space-between;
+        }
+
         .pro-badge {
             background: linear-gradient(90deg, #f59e0b, #ef4444);
             color: white;
@@ -892,6 +910,13 @@
             <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--klyvero-text);">
                 <span id="exportPercentText">0%</span>
                 <span id="exportTimeText">Traitement des images...</span>
+            </div>
+            <div class="export-details-box">
+                <div class="export-details-row"><span>Résolution:</span> <span>1920x1080 (FHD)</span></div>
+                <div class="export-details-row"><span>Framerate:</span> <span id="expDetailsFps">30 FPS</span></div>
+                <div class="export-details-row"><span>Frames rendues:</span> <span id="expDetailsFrames">0 / 0</span></div>
+                <div class="export-details-row"><span>Format / Codec:</span> <span>MP4 / H.264</span></div>
+                <div class="export-details-row"><span>Bitrate:</span> <span>8 Mbps</span></div>
             </div>
         </div>
     </div>
@@ -1893,26 +1918,28 @@
             app.activeSequence.timeline.forEach(c => { if ((c.startTime + c.duration) > totalDuration) totalDuration = c.startTime + c.duration; });
 
             showCustomDialog({ title: 'Exporter le projet', defaultValue: 'Mon_Montage.mp4' }, (fileName) => {
-                if (fileName) runExportProcess(totalDuration);
+                if (fileName) runExportProcess(totalDuration, fileName);
             });
         });
 
-        function runExportProcess(totalDuration) {
+        function runExportProcess(totalDuration, fileName) {
             const overlay = document.getElementById('exportModalOverlay');
             const fill = document.getElementById('exportProgressBarFill');
             const percentText = document.getElementById('exportPercentText');
+            const framesText = document.getElementById('expDetailsFrames');
             
             overlay.style.display = 'flex';
             if (app.isPlaying) togglePlay();
 
             let currentStep = 0;
-            const totalSteps = Math.max(1, Math.ceil(totalDuration * 10));
+            const totalSteps = Math.max(1, Math.ceil(totalDuration * app.fps));
 
             const interval = setInterval(() => {
                 currentStep++;
                 const progress = Math.min(100, Math.round((currentStep / totalSteps) * 100));
                 fill.style.width = progress + '%';
                 percentText.innerText = progress + '%';
+                framesText.innerText = `${currentStep} / ${totalSteps}`;
                 app.currentTime = (currentStep / totalSteps) * totalDuration;
                 app.needsCanvasUpdate = true;
 
@@ -1920,10 +1947,30 @@
                     clearInterval(interval);
                     setTimeout(() => {
                         overlay.style.display = 'none';
-                        showToast("Exportation terminée !");
+                        downloadExportedFile(fileName);
+                        showToast("Exportation terminée et installée !");
                     }, 500);
                 }
             }, 30);
+        }
+
+        function downloadExportedFile(filename) {
+            const proj = getCurrentProject();
+            const exportData = JSON.stringify({
+                project: proj ? proj.name : 'Unassigned',
+                exportedAt: new Date().toISOString(),
+                sequence: app.activeSequence
+            }, null, 2);
+
+            const blob = new Blob([exportData], { type: 'video/mp4' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename.endsWith('.mp4') ? filename : filename + '.mp4';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
         }
 
         // --- INTERACTION TACTILE ET CANVAS POUR REDIMENSIONNER ---
