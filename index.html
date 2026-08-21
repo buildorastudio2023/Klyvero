@@ -914,7 +914,7 @@
                 <div class="export-details-row"><span>Résolution:</span> <span>1920x1080 (FHD)</span></div>
                 <div class="export-details-row"><span>Framerate:</span> <span id="expDetailsFps">30 FPS</span></div>
                 <div class="export-details-row"><span>Frames rendues:</span> <span id="expDetailsFrames">0 / 0</span></div>
-                <div class="export-details-row"><span>Format / Codec:</span> <span>MP4 / H.264</span></div>
+                <div class="export-details-row"><span>Format / Codec:</span> <span>WebM / VP8</span></div>
                 <div class="export-details-row"><span>Destination:</span> <span>Fichier Local</span></div>
             </div>
         </div>
@@ -2144,7 +2144,7 @@
                 return;
             }
 
-            showCustomDialog({ title: 'Nom du fichier d\'export', defaultValue: 'Mon_Montage.mp4' }, (fileName) => {
+            showCustomDialog({ title: 'Nom du fichier d\'export', defaultValue: 'Mon_Montage.webm' }, (fileName) => {
                 if (fileName) runExportProcess(totalDuration, fileName);
             });
         });
@@ -2215,12 +2215,18 @@
                     mediaRecorder.stop();
                     mediaRecorder.onstop = async () => {
                         audioCtx.close();
-                        const blob = new Blob(recordedChunks, { type: 'video/mp4' });
+                        const blob = new Blob(recordedChunks, { type: 'video/webm' });
 
                         const url = URL.createObjectURL(blob);
                         const a = document.createElement('a');
                         a.href = url;
-                        a.download = fileName.endsWith('.mp4') ? fileName : fileName + '.mp4';
+                        let finalName = fileName;
+                        if (finalName.endsWith('.mp4')) {
+                            finalName = finalName.slice(0, -4) + '.webm';
+                        } else if (!finalName.endsWith('.webm')) {
+                            finalName += '.webm';
+                        }
+                        a.download = finalName;
                         document.body.appendChild(a);
                         a.click();
                         document.body.removeChild(a);
@@ -2376,110 +2382,33 @@
             monitorWrapper.addEventListener('mousedown', startInteraction);
             window.addEventListener('mousemove', moveInteraction);
             window.addEventListener('mouseup', stopInteraction);
-
+            
             monitorWrapper.addEventListener('touchstart', startInteraction, { passive: false });
             window.addEventListener('touchmove', moveInteraction, { passive: false });
             window.addEventListener('touchend', stopInteraction);
         }
 
-        function formatTimecode(sec) {
-            const hrs = Math.floor(sec / 3600);
-            const mins = Math.floor((sec % 3600) / 60);
-            const secs = Math.floor(sec % 60);
-            const frames = Math.floor((sec % 1) * app.fps);
-            return `${String(hrs).padStart(2,'0')}:${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}:${String(frames).padStart(2,'0')}`;
-        }
-
         function updateUIFast() {
-            document.getElementById('tcDisplay').innerText = formatTimecode(app.currentTime);
-            const playheadHead = document.getElementById('playheadHead');
-            const playheadLine = document.getElementById('playheadLine');
-            const posX = app.currentTime * app.pxPerSecond;
+            const timeStr = formatTimecode(app.currentTime);
+            document.getElementById('tcDisplay').innerText = timeStr;
 
-            playheadHead.style.transform = `translateX(${posX}px)`;
-            playheadLine.style.transform = `translateX(${posX}px)`;
+            const px = app.currentTime * app.pxPerSecond;
+            document.getElementById('playheadLine').style.left = px + 'px';
+            document.getElementById('playheadHead').style.left = (px - 8) + 'px';
         }
 
-        function applyFilterToContext(ctx, color) {
-            if (!color) return;
-            let filterString = `brightness(${color.brightness !== undefined ? color.brightness : 100}%) contrast(${color.contrast !== undefined ? color.contrast : 100}%) saturate(${color.saturate !== undefined ? color.saturate : 100}%)`;
+        function formatTimecode(seconds) {
+            const hrs = Math.floor(seconds / 3600);
+            const mins = Math.floor((seconds % 3600) / 60);
+            const secs = Math.floor(seconds % 60);
+            const frames = Math.floor((seconds % 1) * app.fps);
 
-            switch (color.filter) {
-                case 'grayscale': filterString += ' grayscale(100%)'; break;
-                case 'sepia': filterString += ' sepia(100%)'; break;
-                case 'invert': filterString += ' invert(100%)'; break;
-                case 'blur': filterString += ' blur(4px)'; break;
-                case 'hue-rotate': filterString += ' hue-rotate(90deg)'; break;
-                case 'vivid': filterString += ' saturate(200%) contrast(120%)'; break;
-                case 'vintage': filterString += ' sepia(50%) contrast(110%) brightness(90%)'; break;
-                case 'cold': filterString += ' hue-rotate(180deg) saturate(80%)'; break;
-                case 'dramatic': filterString += ' contrast(180%) brightness(80%)'; break;
-                case 'posterize': filterString += ' contrast(200%) saturate(150%)'; break;
-            }
-            ctx.filter = filterString;
-        }
-
-        function applyTransition(ctx, clip, progress, drawCallback) {
-            ctx.save();
-            const tType = clip.transition ? clip.transition.type : 'none';
-            const w = canvas.width;
-            const h = canvas.height;
-
-            switch (tType) {
-                case 'fade':
-                    ctx.globalAlpha = progress;
-                    drawCallback();
-                    break;
-                case 'slide-left':
-                    ctx.translate((1 - progress) * w, 0);
-                    drawCallback();
-                    break;
-                case 'slide-right':
-                    ctx.translate((progress - 1) * w, 0);
-                    drawCallback();
-                    break;
-                case 'slide-top':
-                    ctx.translate(0, (1 - progress) * h);
-                    drawCallback();
-                    break;
-                case 'slide-bottom':
-                    ctx.translate(0, (progress - 1) * h);
-                    drawCallback();
-                    break;
-                case 'zoom-in':
-                    ctx.translate(w / 2, h / 2);
-                    ctx.scale(progress, progress);
-                    ctx.translate(-w / 2, -h / 2);
-                    drawCallback();
-                    break;
-                case 'zoom-out':
-                    ctx.translate(w / 2, h / 2);
-                    ctx.scale(2 - progress, 2 - progress);
-                    ctx.translate(-w / 2, -h / 2);
-                    drawCallback();
-                    break;
-                case 'rotate':
-                    ctx.translate(w / 2, h / 2);
-                    ctx.rotate((1 - progress) * Math.PI * 2);
-                    ctx.translate(-w / 2, -h / 2);
-                    drawCallback();
-                    break;
-                case 'blur-in':
-                    ctx.filter = `blur(${(1 - progress) * 20}px)`;
-                    drawCallback();
-                    break;
-                case 'flash':
-                    drawCallback();
-                    if (progress < 0.5) {
-                        ctx.fillStyle = `rgba(255, 255, 255, ${(0.5 - progress) * 2})`;
-                        ctx.fillRect(0, 0, w, h);
-                    }
-                    break;
-                default:
-                    drawCallback();
-                    break;
-            }
-            ctx.restore();
+            return [
+                hrs.toString().padStart(2, '0'),
+                mins.toString().padStart(2, '0'),
+                secs.toString().padStart(2, '0'),
+                frames.toString().padStart(2, '0')
+            ].join(':');
         }
 
         function renderFrame() {
@@ -2488,114 +2417,101 @@
 
             if (!app.activeSequence) return;
 
-            const activeClips = app.activeSequence.timeline.filter(c => {
-                return app.currentTime >= c.startTime && app.currentTime < (c.startTime + c.duration);
-            });
+            const currentClips = app.activeSequence.timeline.filter(clip => 
+                app.currentTime >= clip.startTime && app.currentTime < (clip.startTime + clip.duration)
+            );
 
-            activeClips.sort((a, b) => {
-                const order = { 'A1': 0, 'V1': 1, 'V2': 2, 'TXT': 3 };
-                return (order[a.track] || 0) - (order[b.track] || 0);
-            });
+            currentClips.forEach(clip => {
+                ctx.save();
 
-            activeClips.forEach(clip => {
-                const renderClipBody = () => {
-                    ctx.save();
-                    const cx = canvas.width / 2 + (clip.transform.posX || 0);
-                    const cy = canvas.height / 2 + (clip.transform.posY || 0);
-                    const scaleFactor = (clip.scale || 100) / 100;
-                    const renderW = clip.width * scaleFactor;
-                    const renderH = clip.height * scaleFactor;
+                const scale = (clip.scale || 100) / 100;
+                const drawW = clip.width * scale;
+                const drawH = clip.height * scale;
+                const centerX = canvas.width / 2 + clip.transform.posX;
+                const centerY = canvas.height / 2 + clip.transform.posY;
 
-                    ctx.translate(cx, cy);
-                    if (clip.transform.rotation) {
-                        ctx.rotate((clip.transform.rotation * Math.PI) / 180);
-                    }
-
-                    applyFilterToContext(ctx, clip.color);
-
-                    if (clip.type === 'video' && clip.asset && clip.asset.element) {
-                        const video = clip.asset.element;
-                        const targetTime = (app.currentTime - clip.startTime) + clip.offsetTime;
-
-                        if (!app.isExporting && Math.abs(video.currentTime - targetTime) > 0.15) {
-                            video.currentTime = targetTime;
-                        }
-
-                        if (!clip.audio || clip.audio.muted) {
-                            video.muted = true;
-                        } else {
-                            video.muted = false;
-                            video.volume = clip.audio.volume !== undefined ? clip.audio.volume : 1;
-                        }
-
-                        if (app.isPlaying && video.paused) video.play().catch(() => {});
-                        else if (!app.isPlaying && !video.paused) video.pause();
-
-                        if (video.readyState >= 2) {
-                            ctx.drawImage(video, -renderW / 2, -renderH / 2, renderW, renderH);
-                        }
-                    } else if (clip.type === 'image' && clip.asset && clip.asset.element) {
-                        ctx.drawImage(clip.asset.element, -renderW / 2, -renderH / 2, renderW, renderH);
-                    } else if (clip.type === 'text') {
-                        ctx.font = `bold ${clip.fontSize || 48}px sans-serif`;
-                        ctx.fillStyle = clip.colorHex || '#ffffff';
-                        ctx.textAlign = 'center';
-                        ctx.textBaseline = 'middle';
-                        ctx.fillText(clip.text || '', 0, 0);
-                    } else if (clip.type === 'audio' && clip.asset && clip.asset.element) {
-                        const audio = clip.asset.element;
-                        const targetTime = (app.currentTime - clip.startTime) + clip.offsetTime;
-
-                        if (!app.isExporting && Math.abs(audio.currentTime - targetTime) > 0.15) {
-                            audio.currentTime = targetTime;
-                        }
-
-                        if (!clip.audio || clip.audio.muted) {
-                            audio.muted = true;
-                        } else {
-                            audio.muted = false;
-                            audio.volume = clip.audio.volume !== undefined ? clip.audio.volume : 1;
-                        }
-
-                        if (app.isPlaying && audio.paused) audio.play().catch(() => {});
-                        else if (!app.isPlaying && !audio.paused) audio.pause();
-                    }
-
-                    if (app.selectedClipId === clip.id && !app.isExporting) {
-                        ctx.filter = 'none';
-                        ctx.strokeStyle = '#6366f1';
-                        ctx.lineWidth = 2;
-                        ctx.strokeRect(-renderW / 2, -renderH / 2, renderW, renderH);
-
-                        ctx.fillStyle = '#ffffff';
-                        ctx.fillRect(renderW / 2 - 6, renderH / 2 - 6, 12, 12);
-                    }
-
-                    ctx.restore();
-                };
-
-                const elapsed = app.currentTime - clip.startTime;
-                const transDur = (clip.transition && clip.transition.duration) ? clip.transition.duration : 0.5;
-
-                if (clip.transition && clip.transition.type !== 'none' && elapsed < transDur) {
-                    const progress = Math.min(1, Math.max(0, elapsed / transDur));
-                    applyTransition(ctx, clip, progress, renderClipBody);
-                } else {
-                    renderClipBody();
+                ctx.translate(centerX, centerY);
+                if (clip.transform.rotation) {
+                    ctx.rotate((clip.transform.rotation * Math.PI) / 180);
                 }
-            });
 
-            const inactiveAudioAndVideo = [];
-            if (app.activeSequence) {
-                app.activeSequence.timeline.forEach(c => {
-                    const isActive = app.currentTime >= c.startTime && app.currentTime < (c.startTime + c.duration);
-                    if (!isActive && c.asset && c.asset.element) {
-                        if (c.type === 'video' || c.type === 'audio') {
-                            if (!c.asset.element.paused) c.asset.element.pause();
+                let filterStr = '';
+                if (clip.color) {
+                    if (clip.color.filter && clip.color.filter !== 'none') {
+                        switch(clip.color.filter) {
+                            case 'grayscale': filterStr += 'grayscale(100%) '; break;
+                            case 'sepia': filterStr += 'sepia(100%) '; break;
+                            case 'invert': filterStr += 'invert(100%) '; break;
+                            case 'blur': filterStr += 'blur(5px) '; break;
+                            case 'hue-rotate': filterStr += 'hue-rotate(180deg) '; break;
+                            case 'vivid': filterStr += 'saturate(200%) contrast(120%) '; break;
+                            case 'vintage': filterStr += 'sepia(50%) contrast(110%) '; break;
+                            case 'cold': filterStr += 'hue-rotate(60deg) saturate(80%) '; break;
+                            case 'dramatic': filterStr += 'contrast(150%) brightness(90%) '; break;
+                            case 'posterize': filterStr += 'contrast(200%) saturate(150%) '; break;
                         }
                     }
-                });
-            }
+                    if (clip.color.brightness !== undefined) filterStr += `brightness(${clip.color.brightness}%) `;
+                    if (clip.color.contrast !== undefined) filterStr += `contrast(${clip.color.contrast}%) `;
+                    if (clip.color.saturate !== undefined) filterStr += `saturate(${clip.color.saturate}%) `;
+                }
+
+                if (filterStr.trim()) ctx.filter = filterStr.trim();
+
+                const relTime = app.currentTime - clip.startTime;
+                if (clip.transition && clip.transition.type !== 'none' && relTime < clip.transition.duration) {
+                    const progress = relTime / clip.transition.duration;
+                    switch(clip.transition.type) {
+                        case 'fade': ctx.globalAlpha = progress; break;
+                        case 'zoom-in': ctx.scale(progress, progress); break;
+                        case 'zoom-out': ctx.scale(2 - progress, 2 - progress); break;
+                        case 'slide-left': ctx.translate((1 - progress) * canvas.width, 0); break;
+                        case 'slide-right': ctx.translate(-(1 - progress) * canvas.width, 0); break;
+                        case 'slide-top': ctx.translate(0, (1 - progress) * canvas.height); break;
+                        case 'slide-bottom': ctx.translate(0, -(1 - progress) * canvas.height); break;
+                        case 'rotate': ctx.rotate((1 - progress) * Math.PI * 2); break;
+                    }
+                }
+
+                if (clip.type === 'image' && clip.asset && clip.asset.element) {
+                    ctx.drawImage(clip.asset.element, -drawW / 2, -drawH / 2, drawW, drawH);
+                } else if (clip.type === 'video' && clip.asset && clip.asset.element) {
+                    const video = clip.asset.element;
+                    const internalTime = relTime + clip.offsetTime;
+
+                    if (!app.isExporting && Math.abs(video.currentTime - internalTime) > 0.15) {
+                        video.currentTime = internalTime;
+                    }
+                    if (app.isPlaying && video.paused) {
+                        video.play().catch(() => {});
+                    } else if (!app.isPlaying && !video.paused && !app.isExporting) {
+                        video.pause();
+                    }
+
+                    video.volume = (clip.audio && !clip.audio.muted) ? clip.audio.volume : 0;
+                    ctx.drawImage(video, -drawW / 2, -drawH / 2, drawW, drawH);
+                } else if (clip.type === 'text') {
+                    ctx.font = `${clip.fontSize || 48}px sans-serif`;
+                    ctx.fillStyle = clip.colorHex || '#ffffff';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(clip.text || '', 0, 0);
+                }
+
+                if (app.selectedClipId === clip.id && !app.isExporting) {
+                    ctx.filter = 'none';
+                    ctx.strokeStyle = '#6366f1';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(-drawW / 2, -drawH / 2, drawW, drawH);
+
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(drawW / 2 - 6, drawH / 2 - 6, 12, 12);
+                    ctx.strokeStyle = '#6366f1';
+                    ctx.strokeRect(drawW / 2 - 6, drawH / 2 - 6, 12, 12);
+                }
+
+                ctx.restore();
+            });
         }
 
         function renderLoop(timestamp) {
@@ -2603,12 +2519,19 @@
                 const delta = (timestamp - app.lastFrameTime) / 1000;
                 app.lastFrameTime = timestamp;
                 app.currentTime += delta;
+
+                if (app.currentTime > MAX_ALLOWED_SECONDS) {
+                    app.currentTime = MAX_ALLOWED_SECONDS;
+                    togglePlay();
+                    triggerProModal();
+                }
+
                 app.needsCanvasUpdate = true;
             }
 
-            if (app.needsCanvasUpdate) {
-                updateUIFast();
+            if (app.needsCanvasUpdate && !app.isExporting) {
                 renderFrame();
+                updateUIFast();
                 app.needsCanvasUpdate = false;
             }
 
