@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Klyvero by Buildora Studio</title>
+    <title>Klyvero V3 by Buildora Studio</title>
     <style>
         :root {
             --klyvero-bg: #121316;
@@ -896,6 +896,12 @@
         .shortcut-badge{opacity:.75}
         @media(max-width:700px){.timeline-enhanced-tools .desktop-only{display:none}.autosave-status{display:none}.klyvero-statusbar{font-size:8px;gap:8px}.keyframe-box{margin-bottom:8px}}
 </style>
+
+<style id="klyvero-v3-css">
+.track-manager{display:flex;gap:4px;align-items:center;margin-left:4px;overflow-x:auto}.track-manager button{height:26px;min-width:28px;padding:0 7px}.track-manager .track-action{font-size:10px}.track-header{position:relative}.track-header .track-controls{margin-left:auto;display:flex;gap:2px}.track-header .track-controls button{border:0;background:transparent;color:inherit;cursor:pointer;padding:1px 3px;font-size:9px}.clip-node.multi-selected{outline:2px solid var(--klyvero-accent);outline-offset:-2px}.clip-node .clip-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:14px}.clip-node .clip-type{position:absolute;right:4px;top:2px;font-size:8px;opacity:.65}.ripple-btn.active{background:var(--klyvero-accent);color:#fff}.selection-count{font-size:9px;color:var(--klyvero-text);min-width:55px;text-align:center}
+@media(max-width:700px){.track-manager{max-width:120px}.selection-count{display:none}}
+</style>
+
 </head>
 <body>
 
@@ -1203,36 +1209,26 @@
                 <button class="btn-tool" id="btnZoomOut" title="Zoom arrière">−</button>
                 <span class="zoom-readout" id="zoomReadout">40 px/s</span>
                 <button class="btn-tool" id="btnZoomIn" title="Zoom avant">+</button>
-                <button class="btn-tool snap-on" id="btnSnap" title="Aimantation">🧲</button>
+                <button class="btn-tool snap-on" id="btnSnap" title="Aimantation">🧲</button><span class="selection-count" id="selectionCount">1 sélection</span><button class="btn-tool ripple-btn" id="btnRipple" title="Suppression avec décalage">Ripple</button><div class="track-manager" id="trackManager"><button class="btn-tool track-action" id="btnAddVideoTrack">+ V</button><button class="btn-tool track-action" id="btnAddAudioTrack">+ A</button></div>
                 <span class="autosave-status"><span class="autosave-dot"></span><span id="autosaveText">Sauvegardé</span></span>
             </div>
         </div>
         
         <div class="timeline-editor">
-            <div class="track-headers">
-                <div class="track-header" style="height:20px;"></div>
-                <div class="track-header">Texte T1</div>
-                <div class="track-header">Vidéo V2</div>
-                <div class="track-header">Vidéo V1</div>
-                <div class="track-header">Audio A1</div>
-            </div>
+            <div class="track-headers" id="trackHeaders"><div class="track-header" style="height:20px;"></div></div>
 
             <div class="tracks-scroll-area" id="tracksScrollArea">
                 <div class="tracks-container" id="tracksContainer">
                     <div class="playhead-head" id="playheadHead"></div>
                     <div class="playhead-line" id="playheadLine"></div>
 
-                    <div class="timeline-ruler" id="timelineRuler"></div>
-                    <div class="track-lane" id="laneTxt" data-track="TXT"></div>
-                    <div class="track-lane" id="laneV2" data-track="V2"></div>
-                    <div class="track-lane" id="laneV1" data-track="V1"></div>
-                    <div class="track-lane" id="laneA1" data-track="A1"></div>
+                    <div class="timeline-ruler" id="timelineRuler"></div><div id="dynamicTrackLanes"></div>
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="klyvero-statusbar"><span>Klyvero Studio V2</span><span class="shortcut-badge">V sélection</span><span class="shortcut-badge">C rasoir</span><span class="shortcut-badge">Espace lecture</span><span class="shortcut-badge">Ctrl+D dupliquer</span><span class="shortcut-badge">Ctrl+Z annuler</span></div>
+    <div class="klyvero-statusbar"><span>Klyvero Studio V3</span><span class="shortcut-badge">V sélection</span><span class="shortcut-badge">C rasoir</span><span class="shortcut-badge">Espace lecture</span><span class="shortcut-badge">Ctrl+D dupliquer</span><span class="shortcut-badge">Ctrl+Z annuler</span></div>
 
     <script>
         const KlyveroDB = {
@@ -2794,6 +2790,121 @@
         const _renderTimelineV2=renderTimeline;
         renderTimeline=function(){_renderTimelineV2();renderKeyframeList();};
         startAutosave();
+
+
+        // ================= KLYVERO V3: PRO TIMELINE =================
+        app.selectedClipIds = app.selectedClipIds || new Set();
+        app.rippleMode = false;
+        const DEFAULT_TRACKS = [
+            {id:'TXT1',name:'Texte 1',kind:'text'},
+            {id:'V2',name:'Vidéo 2',kind:'video'},
+            {id:'V1',name:'Vidéo 1',kind:'video'},
+            {id:'A1',name:'Audio 1',kind:'audio'}
+        ];
+        function ensureTracks(seq){
+            if(!seq) return;
+            if(!Array.isArray(seq.tracks)) seq.tracks=DEFAULT_TRACKS.map(x=>({...x}));
+            const map={TXT:'TXT1',V2:'V2',V1:'V1',A1:'A1'};
+            seq.timeline.forEach(c=>{if(map[c.track]) c.track=map[c.track]});
+            seq.tracks.forEach(t=>{if(!t.kind)t.kind=t.id.startsWith('A')?'audio':t.id.startsWith('V')?'video':'text'});
+        }
+        function trackColor(kind){return kind==='audio'?'aud':kind==='text'?'txt':'v1'}
+        function renderTrackStructure(){
+            const seq=app.activeSequence;if(!seq)return;ensureTracks(seq);
+            const headers=document.getElementById('trackHeaders'), lanes=document.getElementById('dynamicTrackLanes');
+            headers.innerHTML='<div class="track-header" style="height:20px"></div>';lanes.innerHTML='';
+            seq.tracks.forEach(t=>{
+                const h=document.createElement('div');h.className='track-header';h.dataset.track=t.id;
+                h.innerHTML='<span>'+t.name+'</span><span class="track-controls"><button title="Monter">↑</button><button title="Descendre">↓</button><button title="Supprimer">×</button></span>';
+                const buttons=h.querySelectorAll('button');
+                buttons[0].onclick=e=>{e.stopPropagation();moveTrack(t.id,-1)};
+                buttons[1].onclick=e=>{e.stopPropagation();moveTrack(t.id,1)};
+                buttons[2].onclick=e=>{e.stopPropagation();removeTrack(t.id)};
+                headers.appendChild(h);
+                const lane=document.createElement('div');lane.className='track-lane';lane.dataset.track=t.id;lane.id='lane_'+t.id;lanes.appendChild(lane);
+            });
+        }
+        function moveTrack(id,dir){
+            const seq=app.activeSequence;if(!seq)return;const i=seq.tracks.findIndex(t=>t.id===id),j=i+dir;if(i<0||j<0||j>=seq.tracks.length)return;
+            pushHistoryState();[seq.tracks[i],seq.tracks[j]]=[seq.tracks[j],seq.tracks[i]];saveCurrentProjectState();renderTimeline();
+        }
+        function removeTrack(id){
+            const seq=app.activeSequence;if(!seq||seq.tracks.length<=1)return;
+            const clips=seq.timeline.filter(c=>c.track===id);
+            if(clips.length && !confirm('Cette piste contient des clips. Supprimer la piste et ses clips ?'))return;
+            pushHistoryState();seq.timeline=seq.timeline.filter(c=>c.track!==id);seq.tracks=seq.tracks.filter(t=>t.id!==id);
+            app.selectedClipIds=new Set([...app.selectedClipIds].filter(cid=>seq.timeline.some(c=>c.id===cid)));app.selectedClipId=app.selectedClipIds.values().next().value||null;saveCurrentProjectState();renderTimeline();
+        }
+        function addTrack(kind){
+            const seq=app.activeSequence;if(!seq)return;ensureTracks(seq);
+            const prefix=kind==='audio'?'A':kind==='video'?'V':'T';
+            let n=1;while(seq.tracks.some(t=>t.id===prefix+n))n++;
+            const id=prefix+n;seq.tracks.push({id,name:(kind==='audio'?'Audio ':kind==='video'?'Vidéo ':'Texte ')+n,kind});
+            pushHistoryState();saveCurrentProjectState();renderTimeline();
+        }
+        document.getElementById('btnAddVideoTrack')?.addEventListener('click',()=>addTrack('video'));
+        document.getElementById('btnAddAudioTrack')?.addEventListener('click',()=>addTrack('audio'));
+        document.getElementById('btnRipple')?.addEventListener('click',e=>{app.rippleMode=!app.rippleMode;e.currentTarget.classList.toggle('active',app.rippleMode)});
+        function selectClipV3(id,add=false){
+            if(!add)app.selectedClipIds.clear();
+            if(app.selectedClipIds.has(id)&&add)app.selectedClipIds.delete(id);else app.selectedClipIds.add(id);
+            app.selectedClipId=app.selectedClipIds.values().next().value||null;selectClip(app.selectedClipId);
+            document.getElementById('selectionCount').textContent=app.selectedClipIds.size+' sélection'+(app.selectedClipIds.size>1?'s':'');
+        }
+        function snapTime(t,ignoreIds=[]){
+            if(!document.getElementById('btnSnap')?.classList.contains('snap-on'))return Math.max(0,t);
+            const seq=app.activeSequence;if(!seq)return Math.max(0,t);const pts=[0,app.currentTime];
+            seq.timeline.forEach(c=>{if(!ignoreIds.includes(c.id)){pts.push(c.startTime,c.startTime+c.duration)}});
+            let best=t,dist=.12;pts.forEach(p=>{if(Math.abs(p-t)<dist){best=p;dist=Math.abs(p-t)}});return Math.max(0,best);
+        }
+        function rippleDeleteV3(){
+            const seq=app.activeSequence;if(!seq||!app.selectedClipIds.size)return;
+            pushHistoryState();const selected=[...app.selectedClipIds].map(id=>seq.timeline.find(c=>c.id===id)).filter(Boolean);
+            const byTrack={};selected.forEach(c=>(byTrack[c.track]??=[]).push(c));
+            Object.entries(byTrack).forEach(([track,removed])=>{
+                removed.sort((a,b)=>a.startTime-b.startTime);
+                const deletedBefore={};
+                seq.timeline.filter(c=>c.track===track&&!app.selectedClipIds.has(c.id)).forEach(c=>{
+                    let shift=0;removed.forEach(r=>{if(r.startTime< c.startTime)shift+=r.duration});c.startTime=Math.max(0,c.startTime-shift);
+                });
+            });
+            seq.timeline=seq.timeline.filter(c=>!app.selectedClipIds.has(c.id));app.selectedClipIds.clear();app.selectedClipId=null;saveCurrentProjectState();renderTimeline();
+        }
+        const _deleteSelectedV3=deleteSelectedClip;
+        deleteSelectedClip=function(){if(app.rippleMode&&app.selectedClipIds.size>1){rippleDeleteV3();return}if(app.rippleMode&&app.selectedClipIds.size===1){rippleDeleteV3();return}if(app.selectedClipIds.size>1){pushHistoryState();app.activeSequence.timeline=app.activeSequence.timeline.filter(c=>!app.selectedClipIds.has(c.id));app.selectedClipIds.clear();app.selectedClipId=null;saveCurrentProjectState();renderTimeline();return}_deleteSelectedV3()};
+        function renderTimelineV3(){
+            const seq=app.activeSequence;if(!seq)return;ensureTracks(seq);renderTrackStructure();
+            document.querySelectorAll('.clip-node').forEach(n=>n.remove());
+            seq.timeline.forEach(clip=>{
+                const lane=document.querySelector('.track-lane[data-track="'+clip.track+'"]');if(!lane)return;
+                const node=document.createElement('div');node.className='clip-node '+trackColor((seq.tracks.find(t=>t.id===clip.track)||{}).kind)+(app.selectedClipIds.has(clip.id)?' multi-selected':'');
+                node.style.left=(clip.startTime*app.pxPerSecond)+'px';node.style.width=Math.max(12,clip.duration*app.pxPerSecond)+'px';
+                node.innerHTML='<span class="clip-name">'+(clip.type==='text'?clip.text:(clip.asset?.name||'Média'))+'</span><span class="clip-type">'+(clip.type||'video').toUpperCase()+'</span><div class="clip-handle left"></div><div class="clip-handle right"></div>';
+                const move=(e,edge)=>{e.stopPropagation();const x=e.touches?e.touches[0].clientX:e.clientX,origS=clip.startTime,origD=clip.duration,selected=[...app.selectedClipIds].map(id=>seq.timeline.find(c=>c.id===id)).filter(Boolean);if(!app.selectedClipIds.has(clip.id)){selectClipV3(clip.id,e.shiftKey);}
+                    const starts=new Map(selected.map(c=>[c.id,c.startTime]));
+                    const onMove=mv=>{const cx=mv.touches?mv.touches[0].clientX:mv.clientX,delta=(cx-x)/app.pxPerSecond;
+                        if(edge){if(edge==='L'&&origD-delta>.2){clip.startTime=snapTime(origS+delta,[...app.selectedClipIds]);clip.duration=origD+(origS-clip.startTime)}else if(edge==='R'&&origD+delta>.2)clip.duration=Math.min(MAX_ALLOWED_SECONDS-clip.startTime,origD+delta)}
+                        else {selected.forEach(c=>{c.startTime=snapTime(Math.max(0,starts.get(c.id)+delta),selected.map(z=>z.id));});}
+                        renderTimelineV3();app.needsCanvasUpdate=true;
+                    };
+                    const end=()=>{window.removeEventListener('mousemove',onMove);window.removeEventListener('mouseup',end);window.removeEventListener('touchmove',onMove);window.removeEventListener('touchend',end);saveCurrentProjectState()};
+                    window.addEventListener('mousemove',onMove);window.addEventListener('mouseup',end);window.addEventListener('touchmove',onMove,{passive:false});window.addEventListener('touchend',end);
+                };
+                node.querySelector('.left').onmousedown=e=>move(e,'L');node.querySelector('.right').onmousedown=e=>move(e,'R');
+                node.addEventListener('mousedown',e=>{if(e.target.classList.contains('clip-handle'))return;if(app.activeTool==='razor'){cutClipAtPlayhead(clip);return}selectClipV3(clip.id,e.shiftKey);if(e.shiftKey)return;move(e,null)});
+                node.addEventListener('touchstart',e=>{if(e.target.classList.contains('clip-handle'))return;selectClipV3(clip.id,false);move(e,null)},{passive:true});lane.appendChild(node);
+            });
+            document.getElementById('selectionCount').textContent=app.selectedClipIds.size+' sélection'+(app.selectedClipIds.size>1?'s':'');
+            updateTimelineRuler();
+        }
+        function updateTimelineRuler(){
+            const r=document.getElementById('timelineRuler');if(!r)return;r.innerHTML='';const total=3600;for(let t=0;t<=total;t+=10){const m=document.createElement('span');m.textContent=(Math.floor(t/60)+':'+String(t%60).padStart(2,'0'));m.style.position='absolute';m.style.left=(t*app.pxPerSecond)+'px';m.style.fontSize='9px';m.style.padding='3px';m.style.color='var(--klyvero-text)';r.appendChild(m)}}
+        renderTimeline=renderTimelineV3;
+        const _addAssetToTimelineV3=window.addAssetToTimeline;
+        window.addAssetToTimeline=function(assetId){_addAssetToTimelineV3(assetId);if(app.activeSequence){ensureTracks(app.activeSequence);const c=app.activeSequence.timeline[app.activeSequence.timeline.length-1];if(c){if(c.type==='audio')c.track=app.activeSequence.tracks.find(t=>t.kind==='audio')?.id||'A1';else if(c.type==='image'||c.type==='video')c.track=app.activeSequence.tracks.find(t=>t.kind==='video')?.id||'V1';renderTimeline()}}};
+        const _addTextClipV3=addTextClip;
+        addTextClip=function(){_addTextClipV3();if(app.activeSequence){ensureTracks(app.activeSequence);const c=app.activeSequence.timeline[app.activeSequence.timeline.length-1];if(c)c.track=app.activeSequence.tracks.find(t=>t.kind==='text')?.id||'TXT1';renderTimeline()}};
+        window.addEventListener('keydown',e=>{if(['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName))return;if(e.key.toLowerCase()==='a'&&!e.ctrlKey&&!e.metaKey){e.preventDefault();selectClipV3(null,false);app.activeSequence?.timeline.forEach(c=>app.selectedClipIds.add(c.id));app.selectedClipId=app.selectedClipIds.values().next().value||null;renderTimeline()}});
 
         window.addEventListener('DOMContentLoaded', bootSystemPerformance);
     </script>
