@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Klyvero by Buildora Studio</title>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <style>
         :root {
             --klyvero-bg: #121316;
@@ -390,6 +391,33 @@
             border-radius: 6px;
             cursor: pointer;
             min-height: 40px;
+        }
+
+        .drive-sync-box {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: var(--klyvero-panel);
+            border: 1px solid var(--klyvero-border);
+            padding: 8px 12px;
+            border-radius: 6px;
+        }
+
+        .drive-status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: var(--klyvero-text);
+        }
+
+        .drive-status-indicator.connected {
+            background-color: #10b981;
+            box-shadow: 0 0 8px #10b981;
+        }
+
+        .drive-status-text {
+            font-size: 11px;
+            color: var(--klyvero-bright);
         }
 
         header {
@@ -953,7 +981,14 @@
                 <span>Klyvero</span>
                 <span class="brand-badge">BY BUILDORA STUDIO</span>
             </div>
-            <button class="btn-primary-large" id="btnCreateProject">+ Nouveau Projet</button>
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <div class="drive-sync-box">
+                    <div class="drive-status-indicator" id="driveStatusIndicator"></div>
+                    <span class="drive-status-text" id="driveStatusText">Google Drive non connecté</span>
+                    <button class="btn-tool" id="btnConnectDrive">Associer Google Drive</button>
+                </div>
+                <button class="btn-primary-large" id="btnCreateProject">+ Nouveau Projet</button>
+            </div>
         </div>
         <div class="home-grid" id="projectGrid"></div>
     </div>
@@ -1172,6 +1207,115 @@
     </div>
 
     <script>
+        const GoogleDriveSync = {
+            CLIENT_ID: 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com',
+            SCOPES: 'https://www.googleapis.com/auth/drive.file',
+            tokenClient: null,
+            accessToken: null,
+            init() {
+                if (typeof google === 'undefined' || !google.accounts) return;
+                this.tokenClient = google.accounts.oauth2.initTokenClient({
+                    client_id: this.CLIENT_ID,
+                    scope: this.SCOPES,
+                    callback: (response) => {
+                        if (response.access_token) {
+                            this.accessToken = response.access_token;
+                            localStorage.setItem('klyvero_gdrive_token', this.accessToken);
+                            this.updateUI(true);
+                            showToast("Compte Google Drive associé avec succès !");
+                            this.autoSaveToDrive();
+                        }
+                    },
+                });
+
+                const savedToken = localStorage.getItem('klyvero_gdrive_token');
+                if (savedToken) {
+                    this.accessToken = savedToken;
+                    this.updateUI(true);
+                }
+            },
+            connect() {
+                if (!this.tokenClient) this.init();
+                if (this.tokenClient) {
+                    this.tokenClient.requestAccessToken({ prompt: 'consent' });
+                } else {
+                    showToast("SDK Google Non Chargé");
+                }
+            },
+            updateUI(isConnected) {
+                const indicator = document.getElementById('driveStatusIndicator');
+                const text = document.getElementById('driveStatusText');
+                const btn = document.getElementById('btnConnectDrive');
+                if (isConnected) {
+                    indicator.classList.add('connected');
+                    text.innerText = "Google Drive Connecté (Auto-save actif)";
+                    btn.innerText = "Dissocier Drive";
+                    btn.onclick = () => this.disconnect();
+                } else {
+                    indicator.classList.remove('connected');
+                    text.innerText = "Google Drive non connecté";
+                    btn.innerText = "Associer Google Drive";
+                    btn.onclick = () => this.connect();
+                }
+            },
+            disconnect() {
+                this.accessToken = null;
+                localStorage.removeItem('klyvero_gdrive_token');
+                this.updateUI(false);
+                showToast("Google Drive dissocié");
+            },
+            async autoSaveToDrive() {
+                if (!this.accessToken || !app.currentProjectId) return;
+                const proj = getCurrentProject();
+                if (!proj) return;
+
+                const cleanProject = {
+                    ...proj,
+                    assets: proj.assets.map(a => {
+                        const { element, ...rest } = a;
+                        return rest;
+                    })
+                };
+
+                const fileName = `Klyvero_Project_${proj.id}.json`;
+                const fileData = JSON.stringify(cleanProject);
+
+                try {
+                    const searchUrl = `https://www.googleapis.com/drive/v3/files?q=name='${fileName}' and trashed=false`;
+                    const searchRes = await fetch(searchUrl, {
+                        headers: { 'Authorization': `Bearer ${this.accessToken}` }
+                    });
+                    const searchData = await searchRes.json();
+
+                    if (searchData.files && searchData.files.length > 0) {
+                        const fileId = searchData.files[0].id;
+                        await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
+                            method: 'PATCH',
+                            headers: {
+                                'Authorization': `Bearer ${this.accessToken}`,
+                                'Content-Type': 'application/json'
+                            },
+                            body: fileData
+                        });
+                    } else {
+                        const metadata = { name: fileName, mimeType: 'application/json' };
+                        const form = new FormData();
+                        form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+                        form.append('file', new Blob([fileData], { type: 'application/json' }));
+
+                        await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+                            method: 'POST',
+                            headers: { 'Authorization': `Bearer ${this.accessToken}` },
+                            body: form
+                        });
+                    }
+                    showToast("Sauvegarde Cloud automatique réussie !");
+                } catch (e) {
+                    console.error("Erreur de sauvegarde Drive :", e);
+                }
+            }
+        };
+
         const KlyveroDB = {
             dbName: 'KlyveroMediaStorage',
             dbVersion: 1,
@@ -1244,6 +1388,9 @@
             initCanvasInteraction();
             loadProjectsFromStorage();
             
+            GoogleDriveSync.init();
+            document.getElementById('btnConnectDrive').addEventListener('click', () => GoogleDriveSync.connect());
+
             requestAnimationFrame(renderLoop);
 
             const loader = document.getElementById('appLoader');
@@ -1323,6 +1470,7 @@
                 })
             }));
             localStorage.setItem('klyvero_projects', JSON.stringify(cleanProjects));
+            GoogleDriveSync.autoSaveToDrive();
         }
 
         function renderHomeScreen() {
