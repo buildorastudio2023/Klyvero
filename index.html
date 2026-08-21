@@ -1,0 +1,1993 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Klyvero by Buildora Studio</title>
+    <style>
+        :root {
+            --klyvero-bg: #121316;
+            --klyvero-panel: #1a1c23;
+            --klyvero-header: #21242d;
+            --klyvero-subpanel: #16171d;
+            --klyvero-border: #2e3240;
+            --klyvero-accent: #6366f1;
+            --klyvero-accent-hover: #4f46e5;
+            --klyvero-red: #ef4444;
+            --klyvero-text: #94a3b8;
+            --klyvero-bright: #f8fafc;
+            --track-v1: #1e293b;
+            --track-v2: #334155;
+            --track-txt: #4c1d95;
+            --track-aud: #065f46;
+            --playhead: #f43f5e;
+        }
+
+        body.light-theme {
+            --klyvero-bg: #f1f5f9;
+            --klyvero-panel: #ffffff;
+            --klyvero-header: #e2e8f0;
+            --klyvero-subpanel: #f8fafc;
+            --klyvero-border: #cbd5e1;
+            --klyvero-accent: #6366f1;
+            --klyvero-accent-hover: #4f46e5;
+            --klyvero-red: #ef4444;
+            --klyvero-text: #475569;
+            --klyvero-bright: #0f172a;
+            --track-v1: #cbd5e1;
+            --track-v2: #94a3b8;
+            --track-txt: #ddd6fe;
+            --track-aud: #a7f3d0;
+            --playhead: #f43f5e;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--klyvero-bg);
+            color: var(--klyvero-text);
+            height: 100vh;
+            height: 100dvh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            font-size: 11px;
+            transition: background-color 0.2s, color 0.2s;
+        }
+
+        /* --- GPU Acceleration Hints --- */
+        .clip-node, .playhead-line, .playhead-head, #viewport {
+            will-change: transform;
+            transform: translateZ(0);
+        }
+
+        .app-loader-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: var(--klyvero-bg);
+            z-index: 10000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+            transition: opacity 0.4s ease, visibility 0.4s ease;
+        }
+
+        .loader-spinner {
+            width: 48px;
+            height: 48px;
+            border: 4px solid var(--klyvero-border);
+            border-top-color: var(--klyvero-accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        .loader-text {
+            color: var(--klyvero-bright);
+            font-weight: 700;
+            font-size: 14px;
+            letter-spacing: 0.5px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .ui-toast-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .ui-toast {
+            background: var(--klyvero-panel);
+            border: 1px solid var(--klyvero-accent);
+            color: var(--klyvero-bright);
+            padding: 12px 18px;
+            border-radius: 8px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            animation: slideIn 0.2s ease-out;
+        }
+
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        .custom-dialog-overlay, .export-modal-overlay, .pro-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+            z-index: 5000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .export-modal-overlay { z-index: 6000; background: rgba(0, 0, 0, 0.85); }
+        .pro-modal-overlay { z-index: 7000; background: rgba(0, 0, 0, 0.85); }
+
+        .custom-dialog, .export-card, .pro-card {
+            background: var(--klyvero-panel);
+            border: 1px solid var(--klyvero-border);
+            width: 90%;
+            max-width: 420px;
+            border-radius: 10px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+        }
+
+        .pro-card {
+            background: linear-gradient(135deg, #1e1b4b, var(--klyvero-panel));
+            border-color: var(--klyvero-accent);
+            align-items: center;
+            text-align: center;
+        }
+
+        .dialog-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--klyvero-bright);
+        }
+
+        .dialog-input {
+            background: var(--klyvero-subpanel);
+            border: 1px solid var(--klyvero-border);
+            color: var(--klyvero-bright);
+            padding: 10px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            outline: none;
+        }
+
+        .dialog-input:focus { border-color: var(--klyvero-accent); }
+
+        .dialog-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+        }
+
+        .btn-dialog {
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: 600;
+            border: none;
+            min-height: 36px;
+        }
+
+        .btn-dialog-cancel { background: var(--klyvero-subpanel); color: var(--klyvero-text); border: 1px solid var(--klyvero-border); }
+        .btn-dialog-confirm { background: var(--klyvero-accent); color: white; }
+        .btn-dialog-danger { background: var(--klyvero-red); color: white; }
+
+        .export-progress-bar-bg {
+            width: 100%;
+            height: 12px;
+            background: var(--klyvero-subpanel);
+            border-radius: 6px;
+            border: 1px solid var(--klyvero-border);
+            overflow: hidden;
+        }
+
+        .export-progress-bar-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, var(--klyvero-accent), #818cf8);
+            transition: width 0.1s linear;
+        }
+
+        .pro-badge {
+            background: linear-gradient(90deg, #f59e0b, #ef4444);
+            color: white;
+            font-weight: 800;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            letter-spacing: 1px;
+        }
+
+        .home-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: var(--klyvero-bg);
+            z-index: 3000;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+        }
+
+        .home-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            border-bottom: 1px solid var(--klyvero-border);
+            padding-bottom: 15px;
+        }
+
+        .brand-title {
+            font-size: 18px;
+            font-weight: 800;
+            color: var(--klyvero-bright);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .brand-badge {
+            background: var(--klyvero-accent);
+            color: white;
+            font-size: 9px;
+            padding: 3px 6px;
+            border-radius: 4px;
+        }
+
+        .home-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 16px;
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        .project-card {
+            background: var(--klyvero-panel);
+            border: 1px solid var(--klyvero-border);
+            border-radius: 8px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            height: 140px;
+            cursor: pointer;
+        }
+
+        .inline-edit-input {
+            background: var(--klyvero-subpanel);
+            border: 1px solid var(--klyvero-accent);
+            color: var(--klyvero-bright);
+            font-size: 13px;
+            font-weight: bold;
+            padding: 2px 6px;
+            border-radius: 4px;
+            width: 100%;
+            outline: none;
+        }
+
+        .project-title {
+            font-size: 14px;
+            font-weight: bold;
+            color: var(--klyvero-bright);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .project-card-date { font-size: 10px; color: var(--klyvero-text); margin-top: 4px; }
+        .project-card-actions { display: flex; justify-content: space-between; align-items: center; }
+
+        .btn-card-icon {
+            background: transparent;
+            border: none;
+            color: var(--klyvero-text);
+            cursor: pointer;
+            padding: 6px;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .btn-primary-large {
+            background: var(--klyvero-accent);
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            font-size: 12px;
+            font-weight: 600;
+            border-radius: 6px;
+            cursor: pointer;
+            min-height: 40px;
+        }
+
+        header {
+            height: 44px;
+            background-color: var(--klyvero-header);
+            border-bottom: 1px solid var(--klyvero-border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 12px;
+            flex-shrink: 0;
+            z-index: 1000;
+        }
+
+        .menu-bar { display: flex; align-items: center; gap: 6px; }
+
+        .app-logo {
+            font-weight: 800;
+            color: #ffffff;
+            background: var(--klyvero-accent);
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+        }
+
+        .menu-dropdown { position: relative; }
+
+        .menu-btn {
+            background: transparent;
+            border: none;
+            color: var(--klyvero-text);
+            padding: 8px 10px;
+            cursor: pointer;
+            font-size: 11px;
+            border-radius: 4px;
+            min-height: 36px;
+        }
+
+        .dropdown-content {
+            display: none;
+            position: absolute;
+            top: 100%;
+            left: 0;
+            background-color: var(--klyvero-panel);
+            min-width: 180px;
+            box-shadow: 0px 8px 24px rgba(0,0,0,0.5);
+            border: 1px solid var(--klyvero-border);
+            border-radius: 6px;
+            z-index: 1001;
+            padding: 4px 0;
+        }
+
+        .dropdown-content a {
+            color: var(--klyvero-text);
+            padding: 10px 14px;
+            text-decoration: none;
+            display: block;
+            cursor: pointer;
+        }
+
+        .menu-dropdown.active .dropdown-content { display: block; }
+        .header-actions { display: flex; align-items: center; gap: 8px; }
+
+        .theme-select {
+            background: var(--klyvero-subpanel);
+            border: 1px solid var(--klyvero-border);
+            color: var(--klyvero-bright);
+            padding: 6px;
+            border-radius: 4px;
+            font-size: 11px;
+            outline: none;
+        }
+
+        .btn-export {
+            background: var(--klyvero-accent);
+            color: #fff;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+            min-height: 32px;
+        }
+
+        .workspace {
+            display: flex;
+            flex: 1;
+            min-height: 0;
+            position: relative;
+        }
+
+        .panel {
+            background-color: var(--klyvero-panel);
+            border: 1px solid var(--klyvero-border);
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }
+
+        .panel-tabs {
+            height: 36px;
+            background-color: var(--klyvero-subpanel);
+            display: flex;
+            align-items: center;
+            border-bottom: 1px solid var(--klyvero-border);
+            padding-left: 5px;
+            flex-shrink: 0;
+            gap: 2px;
+            overflow-x: auto;
+        }
+
+        .tab {
+            padding: 8px 12px;
+            cursor: pointer;
+            border-right: 1px solid var(--klyvero-border);
+            color: var(--klyvero-text);
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            white-space: nowrap;
+        }
+
+        .tab.active {
+            background-color: var(--klyvero-panel);
+            color: var(--klyvero-bright);
+            border-top: 2px solid var(--klyvero-accent);
+        }
+
+        .tab-close { font-size: 11px; color: var(--klyvero-text); padding: 2px 6px; }
+
+        .panel-project { width: 220px; flex-shrink: 0; }
+
+        .import-zone {
+            margin: 8px;
+            padding: 14px;
+            border: 1px dashed var(--klyvero-border);
+            background: var(--klyvero-subpanel);
+            text-align: center;
+            cursor: pointer;
+            border-radius: 6px;
+            flex-shrink: 0;
+        }
+
+        .asset-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .asset-card {
+            background: var(--klyvero-subpanel);
+            border: 1px solid var(--klyvero-border);
+            border-radius: 4px;
+            padding: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .asset-info { display: flex; align-items: center; gap: 6px; overflow: hidden; }
+        .asset-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--klyvero-bright); }
+        .asset-actions { display: flex; gap: 4px; }
+
+        .btn-add {
+            background: var(--klyvero-border);
+            border: none;
+            color: var(--klyvero-bright);
+            padding: 4px 8px;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+
+        .btn-remove-asset { background: transparent; border: none; color: var(--klyvero-red); padding: 4px; cursor: pointer; font-weight: bold; }
+
+        .panel-program {
+            flex: 1;
+            background: #090a0f;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .monitor-container {
+            flex: 1;
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 8px;
+            min-height: 0;
+        }
+
+        .monitor-wrapper {
+            max-width: 100%;
+            max-height: 100%;
+            aspect-ratio: 16 / 9;
+            box-shadow: 0 0 30px rgba(0,0,0,0.9);
+            border: 1px solid var(--klyvero-border);
+            background: #000;
+            border-radius: 4px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        canvas#viewport {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            display: block;
+        }
+
+        .monitor-controls {
+            height: 42px;
+            width: 100%;
+            background-color: var(--klyvero-panel);
+            border-top: 1px solid var(--klyvero-border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 8px;
+            flex-shrink: 0;
+        }
+
+        .ctrl-group { display: flex; align-items: center; gap: 4px; }
+
+        .btn-tool {
+            background: var(--klyvero-subpanel);
+            border: 1px solid var(--klyvero-border);
+            color: var(--klyvero-bright);
+            padding: 6px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            min-height: 32px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .btn-tool:hover, .btn-tool.active {
+            background: var(--klyvero-accent);
+            border-color: var(--klyvero-accent);
+            color: white;
+        }
+
+        .timecode {
+            font-family: monospace;
+            font-size: 12px;
+            color: #10b981;
+            background: #000;
+            padding: 4px 6px;
+            border: 1px solid var(--klyvero-border);
+            border-radius: 4px;
+        }
+
+        .panel-inspector {
+            width: 260px;
+            flex-shrink: 0;
+            overflow-y: auto;
+        }
+
+        .inspector-box { padding: 12px; border-bottom: 1px solid var(--klyvero-border); }
+        .inspector-title { color: var(--klyvero-bright); font-weight: bold; margin-bottom: 10px; text-transform: uppercase; font-size: 10px; }
+        .control-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 6px; }
+        .control-row label { width: 40%; font-size: 10px; }
+        .control-row input[type="range"] { width: 55%; accent-color: var(--klyvero-accent); height: 20px; }
+        .control-row input[type="number"], .control-row input[type="text"], .control-row select {
+            width: 55%;
+            background: var(--klyvero-subpanel);
+            border: 1px solid var(--klyvero-border);
+            color: var(--klyvero-bright);
+            padding: 6px;
+            border-radius: 4px;
+            outline: none;
+            font-size: 11px;
+        }
+
+        .btn-layer {
+            background: var(--klyvero-subpanel);
+            border: 1px solid var(--klyvero-border);
+            color: var(--klyvero-bright);
+            padding: 8px;
+            width: 48%;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+
+        .btn-danger {
+            background: var(--klyvero-red);
+            color: white;
+            border: none;
+            padding: 10px;
+            width: 100%;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .timeline-area {
+            height: 220px;
+            background-color: var(--klyvero-bg);
+            border-top: 2px solid var(--klyvero-border);
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+        }
+
+        .timeline-toolbar {
+            height: 36px;
+            background-color: var(--klyvero-panel);
+            border-bottom: 1px solid var(--klyvero-border);
+            display: flex;
+            align-items: center;
+            padding: 0 8px;
+            gap: 6px;
+            flex-shrink: 0;
+            overflow-x: auto;
+        }
+
+        .sequence-tabs { display: flex; align-items: center; gap: 4px; }
+        .btn-add-seq {
+            background: var(--klyvero-subpanel);
+            border: 1px solid var(--klyvero-border);
+            color: var(--klyvero-bright);
+            padding: 4px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .timeline-editor {
+            flex: 1;
+            display: flex;
+            position: relative;
+            overflow: hidden;
+            background: var(--klyvero-subpanel);
+            touch-action: pan-x;
+        }
+
+        .track-headers {
+            width: 80px;
+            background: var(--klyvero-panel);
+            border-right: 1px solid var(--klyvero-border);
+            z-index: 10;
+            flex-shrink: 0;
+        }
+
+        .track-header {
+            height: 40px;
+            border-bottom: 1px solid var(--klyvero-border);
+            padding: 4px;
+            display: flex;
+            align-items: center;
+            font-weight: bold;
+            color: var(--klyvero-bright);
+            font-size: 10px;
+        }
+
+        .tracks-scroll-area {
+            flex: 1;
+            position: relative;
+            overflow-x: auto;
+            overflow-y: hidden;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .tracks-container {
+            position: relative;
+            min-width: 144000px;
+            height: 100%;
+        }
+
+        .timeline-ruler {
+            height: 20px;
+            background: var(--klyvero-header);
+            border-bottom: 1px solid var(--klyvero-border);
+            position: relative;
+            cursor: pointer;
+        }
+
+        .track-lane {
+            height: 40px;
+            border-bottom: 1px solid var(--klyvero-border);
+            position: relative;
+            background-color: rgba(255, 255, 255, 0.01);
+        }
+
+        .clip-node {
+            position: absolute;
+            height: 32px;
+            top: 4px;
+            border-radius: 4px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 4px 6px;
+            color: #fff;
+            font-size: 10px;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+            cursor: pointer;
+            touch-action: none;
+        }
+
+        .clip-node.v1 { background-color: var(--track-v1); }
+        .clip-node.v2 { background-color: var(--track-v2); }
+        .clip-node.txt { background-color: var(--track-txt); }
+        .clip-node.aud { background-color: var(--track-aud); }
+        .clip-node.selected { border: 2px solid var(--klyvero-bright); box-shadow: 0 0 8px rgba(255, 255, 255, 0.5); }
+
+        .clip-handle {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 16px;
+            background: rgba(255,255,255,0.3);
+            cursor: ew-resize;
+            touch-action: none;
+        }
+
+        .clip-handle.left { left: 0; border-top-left-radius: 4px; border-bottom-left-radius: 4px; }
+        .clip-handle.right { right: 0; border-top-right-radius: 4px; border-bottom-right-radius: 4px; }
+
+        .playhead-line {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 1px;
+            background-color: var(--playhead);
+            z-index: 100;
+            pointer-events: none;
+            left: 0;
+        }
+
+        .playhead-head {
+            position: absolute;
+            top: 0;
+            left: -8px;
+            width: 17px;
+            height: 18px;
+            background-color: var(--playhead);
+            clip-path: polygon(0 0, 100% 0, 100% 60%, 50% 100%, 0 60%);
+            z-index: 101;
+            cursor: pointer;
+            touch-action: none;
+        }
+
+        input[type="file"] { display: none; }
+
+        /* --- OPTIMISATION INTERFACE MOBILE (Responsive Design) --- */
+        @media (max-width: 768px) {
+            header { height: 40px; padding: 0 6px; }
+            .menu-btn { padding: 4px 6px; font-size: 10px; }
+            .btn-export { padding: 4px 8px; font-size: 10px; }
+            
+            .workspace {
+                flex-direction: column;
+            }
+
+            .panel-project, .panel-inspector {
+                width: 100%;
+                height: 120px;
+                flex-shrink: 0;
+            }
+
+            .panel-program {
+                flex: 1;
+                min-height: 200px;
+            }
+
+            .track-headers { width: 60px; }
+            .track-header { font-size: 9px; }
+
+            .timeline-area { height: 180px; }
+            .ctrl-group .btn-tool { font-size: 9px; padding: 4px 6px; }
+            .timecode { font-size: 10px; }
+
+            .home-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="app-loader-screen" id="appLoader">
+        <div class="loader-spinner"></div>
+        <div class="loader-text" id="loaderText">Initialisation du Moteur Klyvero...</div>
+    </div>
+
+    <div class="custom-dialog-overlay" id="customDialogOverlay">
+        <div class="custom-dialog">
+            <div class="dialog-title" id="dialogTitle">Titre du dialogue</div>
+            <input type="text" class="dialog-input" id="dialogInput" placeholder="Saisir la valeur...">
+            <div class="dialog-actions">
+                <button class="btn-dialog btn-dialog-cancel" id="btnDialogCancel">Annuler</button>
+                <button class="btn-dialog btn-dialog-confirm" id="btnDialogConfirm">Confirmer</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="export-modal-overlay" id="exportModalOverlay">
+        <div class="export-card">
+            <div class="dialog-title" id="exportStatusTitle">Exportation en cours...</div>
+            <div class="export-progress-bar-bg">
+                <div class="export-progress-bar-fill" id="exportProgressBarFill"></div>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--klyvero-text);">
+                <span id="exportPercentText">0%</span>
+                <span id="exportTimeText">Traitement des images...</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="pro-modal-overlay" id="proModalOverlay">
+        <div class="pro-card">
+            <span class="pro-badge">LIMITE ATTEINTE</span>
+            <div class="dialog-title" style="font-size: 16px;">Durée Maximale Dépassée</div>
+            <p style="color: var(--klyvero-text); font-size: 12px; line-height: 1.5;">
+                Votre projet dépasse la limite autorisée de **60 minutes**.
+            </p>
+            <button class="btn-primary-large" style="width: 100%; background: linear-gradient(90deg, var(--klyvero-accent), #818cf8);" onclick="document.getElementById('proModalOverlay').style.display='none'">
+                Passer à la version Klyvero Pro
+            </button>
+            <button class="btn-dialog btn-dialog-cancel" style="width: 100%;" onclick="document.getElementById('proModalOverlay').style.display='none'">
+                Fermer
+            </button>
+        </div>
+    </div>
+
+    <div class="ui-toast-container" id="toastContainer"></div>
+
+    <div class="home-screen" id="homeScreen">
+        <div class="home-header">
+            <div class="brand-title">
+                <span>Klyvero</span>
+                <span class="brand-badge">BY BUILDORA STUDIO</span>
+            </div>
+            <button class="btn-primary-large" id="btnCreateProject">+ Nouveau Projet</button>
+        </div>
+        <div class="home-grid" id="projectGrid"></div>
+    </div>
+
+    <header>
+        <div class="menu-bar">
+            <span class="app-logo" id="homeBtn">Klyvero</span>
+            <div class="menu-dropdown" id="menuEdition">
+                <button class="menu-btn">Édition</button>
+                <div class="dropdown-content">
+                    <a id="mCut">Lame de rasoir</a>
+                    <a id="mSelect">Outil Sélection</a>
+                    <a id="mDelete">Supprimer la sélection</a>
+                </div>
+            </div>
+            <div class="menu-dropdown" id="menuSequence">
+                <button class="menu-btn">Séquence</button>
+                <div class="dropdown-content">
+                    <a id="mNewSeq">Nouvelle Séquence</a>
+                    <a id="mGoStart">Début</a>
+                    <a id="mGoEnd">Fin</a>
+                    <a id="mClearTimeline">Vider la timeline</a>
+                </div>
+            </div>
+            <div class="menu-dropdown" id="menuTitres">
+                <button class="menu-btn">Titres</button>
+                <div class="dropdown-content">
+                    <a id="mAddTitle">Nouveau Texte</a>
+                </div>
+            </div>
+        </div>
+        <div class="header-actions">
+            <select id="themeSelect" class="theme-select">
+                <option value="dark">Sombre</option>
+                <option value="light">Clair</option>
+            </select>
+            <button class="btn-export" id="openExportModalBtn">Exporter</button>
+        </div>
+    </header>
+
+    <div class="workspace">
+        <div class="panel panel-project">
+            <div class="panel-tabs">
+                <div class="tab active">Médias / Assets</div>
+            </div>
+            <div class="import-zone" id="dropZone">
+                + Importer Médias
+                <input type="file" id="fileInput" accept="video/*,image/*,audio/*" multiple>
+            </div>
+            <div class="asset-list" id="assetList"></div>
+        </div>
+
+        <div class="panel panel-program">
+            <div class="panel-tabs" style="width: 100%;">
+                <div class="tab active" id="currentProjectTitleDisplay">Programme - Klyvero</div>
+            </div>
+            <div class="monitor-container">
+                <div class="monitor-wrapper">
+                    <canvas id="viewport" width="960" height="540"></canvas>
+                </div>
+            </div>
+            <div class="monitor-controls">
+                <div class="timecode" id="tcDisplay">00:00:00:00</div>
+                <div class="ctrl-group">
+                    <button class="btn-tool" id="btnPlay">▶</button>
+                    <button class="btn-tool" id="btnCut">✂️</button>
+                    <button class="btn-tool" id="btnAddText">📝</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel panel-inspector">
+            <div class="panel-tabs">
+                <div class="tab active">Inspecteur</div>
+            </div>
+            
+            <div class="inspector-box">
+                <div class="inspector-title">Ordre des Calques</div>
+                <div class="control-row">
+                    <button class="btn-layer" id="btnFront">Avant</button>
+                    <button class="btn-layer" id="btnBack">Arrière</button>
+                </div>
+            </div>
+
+            <div class="inspector-box">
+                <div class="inspector-title">Dimensions & Positions</div>
+                <div class="control-row">
+                    <label>Largeur</label>
+                    <input type="number" id="widthInput" min="10" max="3840">
+                </div>
+                <div class="control-row">
+                    <label>Hauteur</label>
+                    <input type="number" id="heightInput" min="10" max="2160">
+                </div>
+                <div class="control-row">
+                    <label>Échelle (%)</label>
+                    <input type="range" id="scaleRange" min="10" max="300" value="100">
+                </div>
+                <div class="control-row">
+                    <label>Pos X</label>
+                    <input type="range" id="posXRange" min="-960" max="960" value="0">
+                </div>
+                <div class="control-row">
+                    <label>Pos Y</label>
+                    <input type="range" id="posYRange" min="-540" max="540" value="0">
+                </div>
+                <div class="control-row">
+                    <label>Rotation</label>
+                    <input type="range" id="rotRange" min="-180" max="180" value="0">
+                </div>
+            </div>
+
+            <div class="inspector-box">
+                <div class="inspector-title">Timing</div>
+                <div class="control-row">
+                    <label>Début (s)</label>
+                    <input type="number" id="startTimeInput" step="0.1" min="0" max="3600">
+                </div>
+                <div class="control-row">
+                    <label>Durée (s)</label>
+                    <input type="number" id="durationInput" step="0.1" min="0.1" max="3600">
+                </div>
+            </div>
+
+            <div class="inspector-box">
+                <div class="inspector-title">Texte</div>
+                <div class="control-row">
+                    <label>Texte</label>
+                    <input type="text" id="textInput" value="Klyvero Title">
+                </div>
+                <div class="control-row">
+                    <label>Taille</label>
+                    <input type="range" id="fontSizeRange" min="10" max="150" value="48">
+                </div>
+                <div class="control-row">
+                    <label>Couleur</label>
+                    <input type="color" id="textColor" value="#ffffff">
+                </div>
+            </div>
+
+            <div class="inspector-box">
+                <div class="inspector-title">Filtres</div>
+                <div class="control-row">
+                    <label>Effet</label>
+                    <select id="fxSelect">
+                        <option value="none">Aucun</option>
+                        <option value="grayscale">Gris</option>
+                        <option value="sepia">Sépia</option>
+                        <option value="invert">Inversion</option>
+                        <option value="blur">Flou</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="inspector-box">
+                <button class="btn-danger" id="btnDeleteSelected">Supprimer l'élément</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="timeline-area">
+        <div class="timeline-toolbar">
+            <button class="btn-tool active" id="toolSelect">Sélection (V)</button>
+            <button class="btn-tool" id="toolRazor">Rasoir (C)</button>
+            
+            <div class="sequence-tabs" id="sequenceTabsContainer"></div>
+            <button class="btn-add-seq" id="btnAddSequence" title="Créer une nouvelle séquence">+</button>
+        </div>
+        
+        <div class="timeline-editor">
+            <div class="track-headers">
+                <div class="track-header" style="height:20px;"></div>
+                <div class="track-header">Texte T1</div>
+                <div class="track-header">Vidéo V2</div>
+                <div class="track-header">Vidéo V1</div>
+                <div class="track-header">Audio A1</div>
+            </div>
+
+            <div class="tracks-scroll-area" id="tracksScrollArea">
+                <div class="tracks-container" id="tracksContainer">
+                    <div class="playhead-head" id="playheadHead"></div>
+                    <div class="playhead-line" id="playheadLine"></div>
+
+                    <div class="timeline-ruler" id="timelineRuler"></div>
+                    <div class="track-lane" id="laneTxt" data-track="TXT"></div>
+                    <div class="track-lane" id="laneV2" data-track="V2"></div>
+                    <div class="track-lane" id="laneV1" data-track="V1"></div>
+                    <div class="track-lane" id="laneA1" data-track="A1"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const KlyveroDB = {
+            dbName: 'KlyveroMediaStorage',
+            dbVersion: 1,
+            db: null,
+            async init() {
+                return new Promise((resolve, reject) => {
+                    const req = indexedDB.open(this.dbName, this.dbVersion);
+                    req.onupgradeneeded = (e) => {
+                        const db = e.target.result;
+                        if (!db.objectStoreNames.contains('media_blobs')) {
+                            db.createObjectStore('media_blobs');
+                        }
+                    };
+                    req.onsuccess = (e) => {
+                        this.db = e.target.result;
+                        resolve();
+                    };
+                    req.onerror = (e) => reject(e);
+                });
+            },
+            async saveBlob(id, blob) {
+                return new Promise((resolve, reject) => {
+                    const tx = this.db.transaction('media_blobs', 'readwrite');
+                    tx.objectStore('media_blobs').put(blob, id).onsuccess = () => resolve();
+                });
+            },
+            async getBlob(id) {
+                return new Promise((resolve, reject) => {
+                    const tx = this.db.transaction('media_blobs', 'readonly');
+                    const req = tx.objectStore('media_blobs').get(id);
+                    req.onsuccess = (e) => resolve(e.target.result);
+                    req.onerror = (e) => reject(e);
+                });
+            }
+        };
+
+        const app = {
+            currentProjectId: null,
+            projects: [],
+            activeSequence: null,
+            selectedClipId: null,
+            currentTime: 0,
+            isPlaying: false,
+            lastFrameTime: 0,
+            animationFrameId: null,
+            fps: 30,
+            pxPerSecond: 40,
+            activeTool: 'select',
+            needsCanvasUpdate: true
+        };
+
+        const MAX_ALLOWED_SECONDS = 3600;
+        const canvas = document.getElementById('viewport');
+        const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
+
+        async function bootSystemPerformance() {
+            const loaderText = document.getElementById('loaderText');
+            loaderText.innerText = "Initialisation du système...";
+            await KlyveroDB.init();
+            initTheme();
+            initMenuDropdowns();
+            loadProjectsFromStorage();
+            
+            // Lancement de la boucle de rendu optimisée (RAF)
+            requestAnimationFrame(renderLoop);
+
+            const loader = document.getElementById('appLoader');
+            loader.style.opacity = '0';
+            setTimeout(() => loader.style.visibility = 'hidden', 400);
+        }
+
+        function triggerProModal() {
+            document.getElementById('proModalOverlay').style.display = 'flex';
+        }
+
+        function initTheme() {
+            const savedTheme = localStorage.getItem('klyvero_theme') || 'dark';
+            const themeSelect = document.getElementById('themeSelect');
+            themeSelect.value = savedTheme;
+            applyTheme(savedTheme);
+
+            themeSelect.addEventListener('change', (e) => {
+                applyTheme(e.target.value);
+                localStorage.setItem('klyvero_theme', e.target.value);
+            });
+        }
+
+        function applyTheme(theme) {
+            document.body.classList.toggle('light-theme', theme === 'light');
+        }
+
+        function showToast(msg) {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            toast.className = 'ui-toast';
+            toast.innerHTML = `<span>✨</span> <span>${msg}</span>`;
+            container.appendChild(toast);
+            setTimeout(() => toast.remove(), 2500);
+        }
+
+        function showCustomDialog({ title, defaultValue = '', placeholder = '', isDanger = false }, onConfirm) {
+            const overlay = document.getElementById('customDialogOverlay');
+            const titleEl = document.getElementById('dialogTitle');
+            const inputEl = document.getElementById('dialogInput');
+            const btnConfirm = document.getElementById('btnDialogConfirm');
+            const btnCancel = document.getElementById('btnDialogCancel');
+
+            titleEl.innerText = title;
+            inputEl.value = defaultValue;
+            inputEl.placeholder = placeholder;
+            inputEl.style.display = defaultValue === null ? 'none' : 'block';
+
+            btnConfirm.className = `btn-dialog ${isDanger ? 'btn-dialog-danger' : 'btn-dialog-confirm'}`;
+            overlay.style.display = 'flex';
+            if (defaultValue !== null) inputEl.focus();
+
+            const close = () => {
+                overlay.style.display = 'none';
+                btnConfirm.onclick = null;
+                btnCancel.onclick = null;
+            };
+
+            btnConfirm.onclick = () => { close(); onConfirm(inputEl.value); };
+            btnCancel.onclick = close;
+        }
+
+        function loadProjectsFromStorage() {
+            const raw = localStorage.getItem('klyvero_projects');
+            if (raw) {
+                try { app.projects = JSON.parse(raw); } catch(e) { app.projects = []; }
+            }
+            renderHomeScreen();
+        }
+
+        function saveProjectsToStorage() {
+            localStorage.setItem('klyvero_projects', JSON.stringify(app.projects));
+        }
+
+        function renderHomeScreen() {
+            const grid = document.getElementById('projectGrid');
+            grid.innerHTML = '';
+
+            if (app.projects.length === 0) {
+                grid.innerHTML = '<div style="color:var(--klyvero-text)">Aucun projet enregistré.</div>';
+            } else {
+                app.projects.forEach(p => {
+                    const card = document.createElement('div');
+                    card.className = 'project-card';
+                    card.innerHTML = `
+                        <div>
+                            <div class="project-title" id="pTitle_${p.id}">
+                                <span>${p.name}</span>
+                                <button class="btn-card-icon" onclick="startRenameProject('${p.id}', event)">✏️</button>
+                            </div>
+                            <div class="project-card-date">Modifié le ${new Date(p.lastModified).toLocaleDateString()}</div>
+                        </div>
+                        <div class="project-card-actions">
+                            <span style="font-size:10px; color:var(--klyvero-text);">${p.sequences.length} seq</span>
+                            <button class="btn-card-icon" style="color:var(--klyvero-red);" onclick="deleteProject('${p.id}', event)">🗑️</button>
+                        </div>
+                    `;
+                    card.addEventListener('click', () => openProject(p.id));
+                    grid.appendChild(card);
+                });
+            }
+            document.getElementById('homeScreen').style.display = 'flex';
+        }
+
+        window.startRenameProject = function(projId, e) {
+            e.stopPropagation();
+            const proj = app.projects.find(p => p.id === projId);
+            if (!proj) return;
+
+            const container = document.getElementById(`pTitle_${projId}`);
+            container.innerHTML = `<input type="text" class="inline-edit-input" value="${proj.name}" id="inputRename_${projId}">`;
+            const input = document.getElementById(`inputRename_${projId}`);
+            input.focus();
+
+            const save = () => {
+                proj.name = input.value.trim() || proj.name;
+                saveProjectsToStorage();
+                renderHomeScreen();
+            };
+
+            input.addEventListener('blur', save);
+            input.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') save(); });
+        };
+
+        document.getElementById('btnCreateProject').addEventListener('click', () => {
+            showCustomDialog({
+                title: 'Créer un nouveau projet',
+                defaultValue: 'Projet ' + (app.projects.length + 1)
+            }, (name) => {
+                if (!name) return;
+                const newProj = {
+                    id: 'proj_' + Date.now(),
+                    name: name,
+                    lastModified: Date.now(),
+                    assets: [],
+                    sequences: [{ id: 'seq_1', name: 'Séquence 1', timeline: [] }],
+                    activeSequenceId: 'seq_1'
+                };
+                app.projects.push(newProj);
+                saveProjectsToStorage();
+                openProject(newProj.id);
+            });
+        });
+
+        window.deleteProject = function(id, e) {
+            e.stopPropagation();
+            showCustomDialog({ title: 'Supprimer ce projet ?', defaultValue: null, isDanger: true }, () => {
+                app.projects = app.projects.filter(p => p.id !== id);
+                saveProjectsToStorage();
+                renderHomeScreen();
+            });
+        };
+
+        function getCurrentProject() {
+            return app.projects.find(p => p.id === app.currentProjectId);
+        }
+
+        function createMediaElement(asset) {
+            if (asset.type === 'video') {
+                const video = document.createElement('video');
+                video.src = asset.url;
+                video.muted = true;
+                video.playsInline = true;
+                video.preload = "auto";
+                asset.element = video;
+            } else if (asset.type === 'image') {
+                const img = new Image();
+                img.src = asset.url;
+                asset.element = img;
+            } else if (asset.type === 'audio') {
+                const audio = new Audio();
+                audio.src = asset.url;
+                audio.preload = "auto";
+                asset.element = audio;
+            }
+        }
+
+        async function openProject(id) {
+            app.currentProjectId = id;
+            const proj = getCurrentProject();
+            if (!proj) return;
+
+            document.getElementById('currentProjectTitleDisplay').innerText = `${proj.name} - Klyvero Studio`;
+            document.getElementById('homeScreen').style.display = 'none';
+
+            for (const asset of proj.assets) {
+                if (!asset.url || asset.url.startsWith('blob:')) {
+                    const savedBlob = await KlyveroDB.getBlob(asset.id);
+                    if (savedBlob) asset.url = URL.createObjectURL(savedBlob);
+                }
+                if (!asset.element) createMediaElement(asset);
+            }
+
+            proj.sequences.forEach(seq => {
+                seq.timeline.forEach(clip => {
+                    if (clip.assetId) clip.asset = proj.assets.find(a => a.id === clip.assetId);
+                });
+            });
+
+            setActiveSequence(proj.activeSequenceId || proj.sequences[0].id);
+            renderAssetList();
+        }
+
+        document.getElementById('homeBtn').addEventListener('click', () => {
+            saveCurrentProjectState();
+            if (app.isPlaying) togglePlay();
+            renderHomeScreen();
+        });
+
+        function saveCurrentProjectState() {
+            const proj = getCurrentProject();
+            if (proj) {
+                proj.lastModified = Date.now();
+                saveProjectsToStorage();
+            }
+        }
+
+        function setActiveSequence(seqId) {
+            const proj = getCurrentProject();
+            if (!proj) return;
+
+            const seq = proj.sequences.find(s => s.id === seqId);
+            if (seq) {
+                proj.activeSequenceId = seq.id;
+                app.activeSequence = seq;
+                app.selectedClipId = null;
+                renderSequenceTabs();
+                renderTimeline();
+                app.needsCanvasUpdate = true;
+                saveCurrentProjectState();
+            }
+        }
+
+        function renderSequenceTabs() {
+            const proj = getCurrentProject();
+            if (!proj) return;
+
+            const container = document.getElementById('sequenceTabsContainer');
+            container.innerHTML = '';
+            proj.sequences.forEach(seq => {
+                const tab = document.createElement('div');
+                tab.className = `tab ${proj.activeSequenceId === seq.id ? 'active' : ''}`;
+                tab.innerHTML = `
+                    <span>${seq.name}</span>
+                    ${proj.sequences.length > 1 ? `<span class="tab-close" onclick="closeSequence('${seq.id}', event)">✕</span>` : ''}
+                `;
+                tab.addEventListener('click', () => setActiveSequence(seq.id));
+                container.appendChild(tab);
+            });
+        }
+
+        document.getElementById('btnAddSequence').addEventListener('click', createNewSequence);
+        document.getElementById('mNewSeq').addEventListener('click', createNewSequence);
+
+        function createNewSequence() {
+            const proj = getCurrentProject();
+            if (!proj) return;
+            const newSeq = { id: 'seq_' + Date.now(), name: 'Séquence ' + (proj.sequences.length + 1), timeline: [] };
+            proj.sequences.push(newSeq);
+            setActiveSequence(newSeq.id);
+        }
+
+        window.closeSequence = function(seqId, e) {
+            e.stopPropagation();
+            const proj = getCurrentProject();
+            if (!proj || proj.sequences.length <= 1) return;
+            proj.sequences = proj.sequences.filter(s => s.id !== seqId);
+            if (proj.activeSequenceId === seqId) setActiveSequence(proj.sequences[0].id);
+            else renderSequenceTabs();
+            saveCurrentProjectState();
+        };
+
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+
+        dropZone.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', (e) => handleImport(e.target.files));
+
+        function handleImport(files) {
+            const proj = getCurrentProject();
+            if (!proj) return;
+
+            Array.from(files).forEach(async (file) => {
+                const assetId = 'asset_' + Date.now() + Math.random();
+                const tempMedia = document.createElement(file.type.startsWith('video/') ? 'video' : 'audio');
+                const tempUrl = URL.createObjectURL(file);
+                tempMedia.src = tempUrl;
+
+                const processAsset = async (duration) => {
+                    if (duration > MAX_ALLOWED_SECONDS) {
+                        triggerProModal();
+                        URL.revokeObjectURL(tempUrl);
+                        return;
+                    }
+
+                    await KlyveroDB.saveBlob(assetId, file);
+                    const isVideo = file.type.startsWith('video/');
+                    const isImage = file.type.startsWith('image/');
+                    const isAudio = file.type.startsWith('audio/');
+
+                    if (isVideo) {
+                        const video = document.createElement('video');
+                        video.src = tempUrl;
+                        video.muted = true;
+                        video.playsInline = true;
+                        video.preload = "auto";
+                        
+                        proj.assets.push({
+                            id: assetId, name: file.name, type: 'video', url: tempUrl, duration: duration,
+                            width: video.videoWidth || 960, height: video.videoHeight || 540, element: video
+                        });
+                    } else if (isImage) {
+                        const img = new Image();
+                        img.src = tempUrl;
+                        img.onload = () => {
+                            proj.assets.push({
+                                id: assetId, name: file.name, type: 'image', url: tempUrl, duration: 5,
+                                width: img.width || 960, height: img.height || 540, element: img
+                            });
+                            renderAssetList();
+                            saveCurrentProjectState();
+                        };
+                    } else if (isAudio) {
+                        const audio = new Audio();
+                        audio.src = tempUrl;
+                        audio.preload = "auto";
+                        proj.assets.push({ id: assetId, name: file.name, type: 'audio', url: tempUrl, duration: duration, element: audio });
+                    }
+                    renderAssetList();
+                    saveCurrentProjectState();
+                };
+
+                if (file.type.startsWith('image/')) await processAsset(5);
+                else tempMedia.onloadedmetadata = () => processAsset(tempMedia.duration);
+            });
+        }
+
+        function renderAssetList() {
+            const proj = getCurrentProject();
+            if (!proj) return;
+
+            const list = document.getElementById('assetList');
+            list.innerHTML = '';
+            proj.assets.forEach(asset => {
+                const item = document.createElement('div');
+                item.className = 'asset-card';
+                let icon = asset.type === 'image' ? '🖼️' : asset.type === 'audio' ? '🎵' : '🎬';
+
+                item.innerHTML = `
+                    <div class="asset-info"><span>${icon}</span><span class="asset-name">${asset.name}</span></div>
+                    <div class="asset-actions">
+                        <button class="btn-add" onclick="addAssetToTimeline('${asset.id}')">+</button>
+                        <button class="btn-remove-asset" onclick="removeAsset('${asset.id}')">✕</button>
+                    </div>
+                `;
+                list.appendChild(item);
+            });
+        }
+
+        window.removeAsset = function(assetId) {
+            const proj = getCurrentProject();
+            if (!proj) return;
+            proj.assets = proj.assets.filter(a => a.id !== assetId);
+            proj.sequences.forEach(seq => seq.timeline = seq.timeline.filter(c => c.assetId !== assetId));
+            renderAssetList();
+            renderTimeline();
+            app.needsCanvasUpdate = true;
+            saveCurrentProjectState();
+        };
+
+        window.addAssetToTimeline = function(assetId) {
+            const proj = getCurrentProject();
+            if (!proj || !app.activeSequence) return;
+            const asset = proj.assets.find(a => a.id === assetId);
+            if (!asset) return;
+
+            let targetTrack = asset.type === 'image' ? 'V2' : asset.type === 'audio' ? 'A1' : 'V1';
+            const trackClips = app.activeSequence.timeline.filter(c => c.track === targetTrack);
+            let startTime = trackClips.length > 0 ? trackClips[trackClips.length - 1].startTime + trackClips[trackClips.length - 1].duration : 0;
+
+            if ((startTime + asset.duration) > MAX_ALLOWED_SECONDS) {
+                triggerProModal();
+                return;
+            }
+
+            const clip = {
+                id: 'clip_' + Date.now(), assetId: asset.id, asset: asset, type: asset.type, track: targetTrack,
+                startTime: startTime, duration: asset.duration, offsetTime: 0, width: asset.width || 960, height: asset.height || 540,
+                scale: 100, transform: { posX: 0, posY: 0, rotation: 0 }, color: { filter: 'none' }
+            };
+
+            app.activeSequence.timeline.push(clip);
+            selectClip(clip.id);
+            renderTimeline();
+            app.needsCanvasUpdate = true;
+            saveCurrentProjectState();
+        };
+
+        function addTextClip() {
+            if (!app.activeSequence) return;
+            const clip = {
+                id: 'clip_' + Date.now(), type: 'text', track: 'TXT', startTime: app.currentTime, duration: 4,
+                text: 'Klyvero Title', fontSize: 48, colorHex: '#ffffff', width: 400, height: 100, scale: 100,
+                transform: { posX: 0, posY: 0, rotation: 0 }, color: { filter: 'none' }
+            };
+            app.activeSequence.timeline.push(clip);
+            selectClip(clip.id);
+            renderTimeline();
+            app.needsCanvasUpdate = true;
+            saveCurrentProjectState();
+        }
+
+        document.getElementById('btnAddText').addEventListener('click', addTextClip);
+        document.getElementById('mAddTitle').addEventListener('click', addTextClip);
+
+        function renderTimeline() {
+            document.querySelectorAll('.clip-node').forEach(n => n.remove());
+            if (!app.activeSequence) return;
+
+            app.activeSequence.timeline.forEach(clip => {
+                const lane = document.querySelector(`.track-lane[data-track="${clip.track}"]`);
+                if (!lane) return;
+
+                const node = document.createElement('div');
+                node.className = `clip-node ${clip.track.toLowerCase()} ${app.selectedClipId === clip.id ? 'selected' : ''}`;
+                node.style.left = (clip.startTime * app.pxPerSecond) + 'px';
+                node.style.width = (clip.duration * app.pxPerSecond) + 'px';
+                node.innerText = clip.type === 'text' ? clip.text : (clip.asset ? clip.asset.name : 'Média');
+
+                const handleL = document.createElement('div');
+                handleL.className = 'clip-handle left';
+                const handleR = document.createElement('div');
+                handleR.className = 'clip-handle right';
+                node.appendChild(handleL);
+                node.appendChild(handleR);
+
+                // --- Événements Tactiles & Souris Unifiés ---
+                const startDrag = (e, isLeft, isRight) => {
+                    e.stopPropagation();
+                    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                    let startX = clientX;
+                    let origStart = clip.startTime;
+                    let origDur = clip.duration;
+
+                    const onMove = (mv) => {
+                        const currentX = mv.touches ? mv.touches[0].clientX : mv.clientX;
+                        let delta = (currentX - startX) / app.pxPerSecond;
+
+                        if (isLeft) {
+                            if (origDur - delta > 0.2 && origStart + delta >= 0) {
+                                clip.startTime = origStart + delta;
+                                clip.duration = origDur - delta;
+                            }
+                        } else if (isRight) {
+                            if (origDur + delta > 0.2) clip.duration = origDur + delta;
+                        } else {
+                            clip.startTime = Math.max(0, origStart + delta);
+                        }
+                        
+                        node.style.left = (clip.startTime * app.pxPerSecond) + 'px';
+                        node.style.width = (clip.duration * app.pxPerSecond) + 'px';
+                        app.needsCanvasUpdate = true;
+                    };
+
+                    const onEnd = () => {
+                        window.removeEventListener('mousemove', onMove);
+                        window.removeEventListener('mouseup', onEnd);
+                        window.removeEventListener('touchmove', onMove);
+                        window.removeEventListener('touchend', onEnd);
+                        saveCurrentProjectState();
+                        renderTimeline();
+                    };
+
+                    window.addEventListener('mousemove', onMove, { passive: true });
+                    window.addEventListener('mouseup', onEnd);
+                    window.addEventListener('touchmove', onMove, { passive: true });
+                    window.addEventListener('touchend', onEnd);
+                };
+
+                handleL.addEventListener('mousedown', (e) => startDrag(e, true, false));
+                handleL.addEventListener('touchstart', (e) => startDrag(e, true, false), { passive: true });
+
+                handleR.addEventListener('mousedown', (e) => startDrag(e, false, true));
+                handleR.addEventListener('touchstart', (e) => startDrag(e, false, true), { passive: true });
+
+                node.addEventListener('mousedown', (e) => {
+                    if (e.target.classList.contains('clip-handle')) return;
+                    if (app.activeTool === 'razor') cutClipAtPlayhead(clip);
+                    else {
+                        selectClip(clip.id);
+                        startDrag(e, false, false);
+                    }
+                });
+
+                node.addEventListener('touchstart', (e) => {
+                    if (e.target.classList.contains('clip-handle')) return;
+                    selectClip(clip.id);
+                    startDrag(e, false, false);
+                }, { passive: true });
+
+                lane.appendChild(node);
+            });
+        }
+
+        function selectClip(clipId) {
+            app.selectedClipId = clipId;
+            if (!app.activeSequence) return;
+            const clip = app.activeSequence.timeline.find(c => c.id === clipId);
+
+            if (clip) {
+                document.getElementById('startTimeInput').value = clip.startTime.toFixed(2);
+                document.getElementById('durationInput').value = clip.duration.toFixed(2);
+                document.getElementById('widthInput').value = Math.round(clip.width);
+                document.getElementById('heightInput').value = Math.round(clip.height);
+                document.getElementById('scaleRange').value = clip.scale || 100;
+                document.getElementById('posXRange').value = clip.transform.posX;
+                document.getElementById('posYRange').value = clip.transform.posY;
+                document.getElementById('rotRange').value = clip.transform.rotation;
+
+                if (clip.type === 'text') {
+                    document.getElementById('textInput').value = clip.text;
+                    document.getElementById('fontSizeRange').value = clip.fontSize;
+                    document.getElementById('textColor').value = clip.colorHex;
+                }
+                if (clip.color) document.getElementById('fxSelect').value = clip.color.filter || 'none';
+            }
+            renderTimeline();
+        }
+
+        function deleteSelectedClip() {
+            if (!app.selectedClipId || !app.activeSequence) return;
+            app.activeSequence.timeline = app.activeSequence.timeline.filter(c => c.id !== app.selectedClipId);
+            app.selectedClipId = null;
+            renderTimeline();
+            app.needsCanvasUpdate = true;
+            saveCurrentProjectState();
+        }
+
+        document.getElementById('btnDeleteSelected').addEventListener('click', deleteSelectedClip);
+        document.getElementById('mDelete').addEventListener('click', deleteSelectedClip);
+
+        function initMenuDropdowns() {
+            const dropdowns = document.querySelectorAll('.menu-dropdown');
+            dropdowns.forEach(dropdown => {
+                const btn = dropdown.querySelector('.menu-btn');
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    dropdowns.forEach(d => { if (d !== dropdown) d.classList.remove('active'); });
+                    dropdown.classList.toggle('active');
+                });
+            });
+            document.addEventListener('click', () => dropdowns.forEach(d => d.classList.remove('active')));
+        }
+
+        function setTool(tool) {
+            app.activeTool = tool;
+            document.getElementById('toolSelect').classList.toggle('active', tool === 'select');
+            document.getElementById('toolRazor').classList.toggle('active', tool === 'razor');
+        }
+
+        document.getElementById('toolSelect').addEventListener('click', () => setTool('select'));
+        document.getElementById('mSelect').addEventListener('click', () => setTool('select'));
+        document.getElementById('toolRazor').addEventListener('click', () => setTool('razor'));
+        document.getElementById('btnCut').addEventListener('click', () => setTool('razor'));
+        document.getElementById('mCut').addEventListener('click', () => setTool('razor'));
+
+        function cutClipAtPlayhead(targetClip = null) {
+            if (!app.activeSequence) return;
+            const clipsToCut = targetClip 
+                ? [targetClip]
+                : app.activeSequence.timeline.filter(c => app.currentTime > c.startTime && app.currentTime < (c.startTime + c.duration));
+
+            clipsToCut.forEach(clip => {
+                const cutPoint = app.currentTime - clip.startTime;
+                const remainingDuration = clip.duration - cutPoint;
+                clip.duration = cutPoint;
+
+                const newClip = JSON.parse(JSON.stringify(clip));
+                newClip.id = 'clip_' + Date.now() + Math.random();
+                newClip.startTime = app.currentTime;
+                newClip.duration = remainingDuration;
+                newClip.offsetTime = (clip.offsetTime || 0) + cutPoint;
+                if (clip.asset) newClip.asset = clip.asset;
+
+                app.activeSequence.timeline.push(newClip);
+            });
+
+            renderTimeline();
+            app.needsCanvasUpdate = true;
+            saveCurrentProjectState();
+        }
+
+        document.getElementById('mGoStart').addEventListener('click', () => { app.currentTime = 0; app.needsCanvasUpdate = true; });
+        document.getElementById('mGoEnd').addEventListener('click', () => {
+            if (!app.activeSequence) return;
+            let maxTime = 0;
+            app.activeSequence.timeline.forEach(c => { if (c.startTime + c.duration > maxTime) maxTime = c.startTime + c.duration; });
+            app.currentTime = maxTime;
+            app.needsCanvasUpdate = true;
+        });
+
+        document.getElementById('mClearTimeline').addEventListener('click', () => {
+            if (!app.activeSequence) return;
+            showCustomDialog({ title: 'Vider la timeline ?', defaultValue: null, isDanger: true }, () => {
+                app.activeSequence.timeline = [];
+                app.selectedClipId = null;
+                renderTimeline();
+                app.needsCanvasUpdate = true;
+                saveCurrentProjectState();
+            });
+        });
+
+        function togglePlay() {
+            app.isPlaying = !app.isPlaying;
+            document.getElementById('btnPlay').innerText = app.isPlaying ? '⏸' : '▶';
+            if (app.isPlaying) app.lastFrameTime = performance.now();
+        }
+
+        document.getElementById('btnPlay').addEventListener('click', togglePlay);
+
+        const scrollArea = document.getElementById('tracksScrollArea');
+        function setPlayheadFromMouse(e) {
+            const rect = scrollArea.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clickX = clientX - rect.left + scrollArea.scrollLeft;
+            app.currentTime = Math.max(0, clickX / app.pxPerSecond);
+            app.needsCanvasUpdate = true;
+        }
+
+        const ruler = document.getElementById('timelineRuler');
+        const handleRulerDrag = (e) => {
+            setPlayheadFromMouse(e);
+            const onMove = (mv) => setPlayheadFromMouse(mv);
+            const onEnd = () => {
+                window.removeEventListener('mousemove', onMove);
+                window.removeEventListener('mouseup', onEnd);
+                window.removeEventListener('touchmove', onMove);
+                window.removeEventListener('touchend', onEnd);
+            };
+            window.addEventListener('mousemove', onMove, { passive: true });
+            window.addEventListener('mouseup', onEnd);
+            window.addEventListener('touchmove', onMove, { passive: true });
+            window.addEventListener('touchend', onEnd);
+        };
+
+        ruler.addEventListener('mousedown', handleRulerDrag);
+        ruler.addEventListener('touchstart', handleRulerDrag, { passive: true });
+
+        document.getElementById('btnFront').addEventListener('click', () => {
+            if (!app.selectedClipId || !app.activeSequence) return;
+            const idx = app.activeSequence.timeline.findIndex(c => c.id === app.selectedClipId);
+            if (idx > -1 && idx < app.activeSequence.timeline.length - 1) {
+                const item = app.activeSequence.timeline.splice(idx, 1)[0];
+                app.activeSequence.timeline.push(item);
+                app.needsCanvasUpdate = true;
+                saveCurrentProjectState();
+            }
+        });
+
+        document.getElementById('btnBack').addEventListener('click', () => {
+            if (!app.selectedClipId || !app.activeSequence) return;
+            const idx = app.activeSequence.timeline.findIndex(c => c.id === app.selectedClipId);
+            if (idx > 0) {
+                const item = app.activeSequence.timeline.splice(idx, 1)[0];
+                app.activeSequence.timeline.unshift(item);
+                app.needsCanvasUpdate = true;
+                saveCurrentProjectState();
+            }
+        });
+
+        document.getElementById('openExportModalBtn').addEventListener('click', () => {
+            if (!app.activeSequence) return;
+            let totalDuration = 0;
+            app.activeSequence.timeline.forEach(c => { if ((c.startTime + c.duration) > totalDuration) totalDuration = c.startTime + c.duration; });
+
+            showCustomDialog({ title: 'Exporter le projet', defaultValue: 'Mon_Montage.mp4' }, (fileName) => {
+                if (fileName) runExportProcess(totalDuration);
+            });
+        });
+
+        function runExportProcess(totalDuration) {
+            const overlay = document.getElementById('exportModalOverlay');
+            const fill = document.getElementById('exportProgressBarFill');
+            const percentText = document.getElementById('exportPercentText');
+            
+            overlay.style.display = 'flex';
+            if (app.isPlaying) togglePlay();
+
+            let currentStep = 0;
+            const totalSteps = Math.max(1, Math.ceil(totalDuration * 10));
+
+            const interval = setInterval(() => {
+                currentStep++;
+                const progress = Math.min(100, Math.round((currentStep / totalSteps) * 100));
+                fill.style.width = progress + '%';
+                percentText.innerText = progress + '%';
+                app.currentTime = (currentStep / totalSteps) * totalDuration;
+                app.needsCanvasUpdate = true;
+
+                if (currentStep >= totalSteps) {
+                    clearInterval(interval);
+                    setTimeout(() => {
+                        overlay.style.display = 'none';
+                        showToast("Exportation terminée !");
+                    }, 500);
+                }
+            }, 30);
+        }
+
+        // --- OPTIMISATION DU MOTEUR DE RENDU (BOUCLE CONTINU RAF) ---
+        function renderLoop(timestamp) {
+            if (app.isPlaying) {
+                if (!app.lastFrameTime) app.lastFrameTime = timestamp;
+                const delta = (timestamp - app.lastFrameTime) / 1000;
+                app.lastFrameTime = timestamp;
+                app.currentTime += delta;
+                app.needsCanvasUpdate = true;
+            }
+
+            if (app.needsCanvasUpdate) {
+                renderFrame();
+                updateUIFast();
+                app.needsCanvasUpdate = false;
+            }
+
+            requestAnimationFrame(renderLoop);
+        }
+
+        function renderFrame() {
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            if (!app.activeSequence) return;
+
+            const trackOrder = ['V1', 'V2', 'TXT'];
+
+            trackOrder.forEach(trackName => {
+                const activeClips = app.activeSequence.timeline.filter(clip => 
+                    clip.track === trackName &&
+                    app.currentTime >= clip.startTime &&
+                    app.currentTime < (clip.startTime + clip.duration)
+                );
+
+                activeClips.forEach(clip => {
+                    ctx.save();
+                    const centerX = canvas.width / 2 + clip.transform.posX;
+                    const centerY = canvas.height / 2 + clip.transform.posY;
+
+                    ctx.translate(centerX, centerY);
+                    if (clip.transform.rotation !== 0) ctx.rotate((clip.transform.rotation * Math.PI) / 180);
+
+                    const drawW = clip.width;
+                    const drawH = clip.height;
+
+                    if (clip.type === 'video' && clip.asset && clip.asset.element) {
+                        const video = clip.asset.element;
+                        const internalTime = (app.currentTime - clip.startTime) + clip.offsetTime;
+                        
+                        if (Math.abs(video.currentTime - internalTime) > 0.05) {
+                            video.currentTime = internalTime;
+                        }
+                        if (app.isPlaying && video.paused) video.play().catch(() => {});
+                        else if (!app.isPlaying && !video.paused) video.pause();
+
+                        if (video.readyState >= 2) ctx.drawImage(video, -drawW / 2, -drawH / 2, drawW, drawH);
+                    } else if (clip.type === 'image' && clip.asset && clip.asset.element) {
+                        ctx.drawImage(clip.asset.element, -drawW / 2, -drawH / 2, drawW, drawH);
+                    } else if (clip.type === 'text') {
+                        ctx.font = `bold ${clip.fontSize}px sans-serif`;
+                        ctx.fillStyle = clip.colorHex;
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillText(clip.text, 0, 0);
+                    }
+
+                    if (app.selectedClipId === clip.id) {
+                        ctx.strokeStyle = '#6366f1';
+                        ctx.lineWidth = 2;
+                        ctx.strokeRect(-drawW / 2, -drawH / 2, drawW, drawH);
+                    }
+
+                    ctx.restore();
+                });
+            });
+        }
+
+        // Accélération matérielle DOM (GPU translate3d) pour le Curseur de Lecture
+        function updateUIFast() {
+            const posX = app.currentTime * app.pxPerSecond;
+            document.getElementById('playheadHead').style.transform = `translate3d(${posX}px, 0, 0)`;
+            document.getElementById('playheadLine').style.transform = `translate3d(${posX}px, 0, 0)`;
+
+            const mins = Math.floor((app.currentTime % 3600) / 60);
+            const secs = Math.floor(app.currentTime % 60);
+            const frames = Math.floor((app.currentTime % 1) * app.fps);
+
+            document.getElementById('tcDisplay').innerText = 
+                `00:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}:${String(frames).padStart(2, '0')}`;
+        }
+
+        function bindControl(elementId, callback) {
+            document.getElementById(elementId).addEventListener('input', (e) => {
+                if (!app.selectedClipId || !app.activeSequence) return;
+                const clip = app.activeSequence.timeline.find(c => c.id === app.selectedClipId);
+                if (clip) {
+                    callback(clip, e.target.value);
+                    app.needsCanvasUpdate = true;
+                    saveCurrentProjectState();
+                }
+            });
+        }
+
+        bindControl('startTimeInput', (clip, val) => clip.startTime = parseFloat(val) || 0);
+        bindControl('durationInput', (clip, val) => clip.duration = Math.max(0.1, parseFloat(val) || 0.1));
+        bindControl('widthInput', (clip, val) => clip.width = Math.max(10, parseFloat(val) || 10));
+        bindControl('heightInput', (clip, val) => clip.height = Math.max(10, parseFloat(val) || 10));
+        bindControl('scaleRange', (clip, val) => {
+            const scale = parseFloat(val) / 100;
+            clip.scale = parseFloat(val);
+            if (clip.asset) {
+                clip.width = clip.asset.width * scale;
+                clip.height = clip.asset.height * scale;
+                document.getElementById('widthInput').value = Math.round(clip.width);
+                document.getElementById('heightInput').value = Math.round(clip.height);
+            }
+        });
+        bindControl('posXRange', (clip, val) => clip.transform.posX = parseFloat(val));
+        bindControl('posYRange', (clip, val) => clip.transform.posY = parseFloat(val));
+        bindControl('rotRange', (clip, val) => clip.transform.rotation = parseFloat(val));
+        bindControl('textInput', (clip, val) => clip.text = val);
+        bindControl('fontSizeRange', (clip, val) => clip.fontSize = parseFloat(val));
+        bindControl('textColor', (clip, val) => clip.colorHex = val);
+        bindControl('fxSelect', (clip, val) => clip.color.filter = val);
+
+        window.addEventListener('keydown', (e) => {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+            if (e.key === ' ' || e.code === 'Space') { e.preventDefault(); togglePlay(); }
+            else if (e.key === 'c' || e.key === 'C') setTool('razor');
+            else if (e.key === 'v' || e.key === 'V') setTool('select');
+            else if (e.key === 'Delete' || e.key === 'Backspace') deleteSelectedClip();
+        });
+
+        window.addEventListener('DOMContentLoaded', bootSystemPerformance);
+    </script>
+</body>
+</html>
