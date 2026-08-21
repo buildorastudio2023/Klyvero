@@ -393,33 +393,6 @@
             min-height: 40px;
         }
 
-        .drive-sync-box {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            background: var(--klyvero-panel);
-            border: 1px solid var(--klyvero-border);
-            padding: 8px 12px;
-            border-radius: 6px;
-        }
-
-        .drive-status-indicator {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background-color: var(--klyvero-text);
-        }
-
-        .drive-status-indicator.connected {
-            background-color: #10b981;
-            box-shadow: 0 0 8px #10b981;
-        }
-
-        .drive-status-text {
-            font-size: 11px;
-            color: var(--klyvero-bright);
-        }
-
         header {
             height: 44px;
             background-color: var(--klyvero-header);
@@ -982,11 +955,8 @@
                 <span class="brand-badge">BY BUILDORA STUDIO</span>
             </div>
             <div style="display: flex; gap: 10px; align-items: center;">
-                <div class="drive-sync-box">
-                    <div class="drive-status-indicator" id="driveStatusIndicator"></div>
-                    <span class="drive-status-text" id="driveStatusText">Google Drive non connecté</span>
-                    <button class="btn-tool" id="btnConnectDrive">Associer Google Drive</button>
-                </div>
+                <button class="btn-tool" id="btnImportProject">Importer un projet existant (.klyvero)</button>
+                <input type="file" id="projectFileInput" accept=".json,.klyvero">
                 <button class="btn-primary-large" id="btnCreateProject">+ Nouveau Projet</button>
             </div>
         </div>
@@ -1207,115 +1177,6 @@
     </div>
 
     <script>
-        const GoogleDriveSync = {
-            CLIENT_ID: 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com',
-            SCOPES: 'https://www.googleapis.com/auth/drive.file',
-            tokenClient: null,
-            accessToken: null,
-            init() {
-                if (typeof google === 'undefined' || !google.accounts) return;
-                this.tokenClient = google.accounts.oauth2.initTokenClient({
-                    client_id: this.CLIENT_ID,
-                    scope: this.SCOPES,
-                    callback: (response) => {
-                        if (response.access_token) {
-                            this.accessToken = response.access_token;
-                            localStorage.setItem('klyvero_gdrive_token', this.accessToken);
-                            this.updateUI(true);
-                            showToast("Compte Google Drive associé avec succès !");
-                            this.autoSaveToDrive();
-                        }
-                    },
-                });
-
-                const savedToken = localStorage.getItem('klyvero_gdrive_token');
-                if (savedToken) {
-                    this.accessToken = savedToken;
-                    this.updateUI(true);
-                }
-            },
-            connect() {
-                if (!this.tokenClient) this.init();
-                if (this.tokenClient) {
-                    this.tokenClient.requestAccessToken({ prompt: 'consent' });
-                } else {
-                    showToast("SDK Google Non Chargé");
-                }
-            },
-            updateUI(isConnected) {
-                const indicator = document.getElementById('driveStatusIndicator');
-                const text = document.getElementById('driveStatusText');
-                const btn = document.getElementById('btnConnectDrive');
-                if (isConnected) {
-                    indicator.classList.add('connected');
-                    text.innerText = "Google Drive Connecté (Auto-save actif)";
-                    btn.innerText = "Dissocier Drive";
-                    btn.onclick = () => this.disconnect();
-                } else {
-                    indicator.classList.remove('connected');
-                    text.innerText = "Google Drive non connecté";
-                    btn.innerText = "Associer Google Drive";
-                    btn.onclick = () => this.connect();
-                }
-            },
-            disconnect() {
-                this.accessToken = null;
-                localStorage.removeItem('klyvero_gdrive_token');
-                this.updateUI(false);
-                showToast("Google Drive dissocié");
-            },
-            async autoSaveToDrive() {
-                if (!this.accessToken || !app.currentProjectId) return;
-                const proj = getCurrentProject();
-                if (!proj) return;
-
-                const cleanProject = {
-                    ...proj,
-                    assets: proj.assets.map(a => {
-                        const { element, ...rest } = a;
-                        return rest;
-                    })
-                };
-
-                const fileName = `Klyvero_Project_${proj.id}.json`;
-                const fileData = JSON.stringify(cleanProject);
-
-                try {
-                    const searchUrl = `https://www.googleapis.com/drive/v3/files?q=name='${fileName}' and trashed=false`;
-                    const searchRes = await fetch(searchUrl, {
-                        headers: { 'Authorization': `Bearer ${this.accessToken}` }
-                    });
-                    const searchData = await searchRes.json();
-
-                    if (searchData.files && searchData.files.length > 0) {
-                        const fileId = searchData.files[0].id;
-                        await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
-                            method: 'PATCH',
-                            headers: {
-                                'Authorization': `Bearer ${this.accessToken}`,
-                                'Content-Type': 'application/json'
-                            },
-                            body: fileData
-                        });
-                    } else {
-                        const metadata = { name: fileName, mimeType: 'application/json' };
-                        const form = new FormData();
-                        form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-                        form.append('file', new Blob([fileData], { type: 'application/json' }));
-
-                        await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
-                            method: 'POST',
-                            headers: { 'Authorization': `Bearer ${this.accessToken}` },
-                            body: form
-                        });
-                    }
-                    showToast("Sauvegarde Cloud automatique réussie !");
-                } catch (e) {
-                    console.error("Erreur de sauvegarde Drive :", e);
-                }
-            }
-        };
-
         const KlyveroDB = {
             dbName: 'KlyveroMediaStorage',
             dbVersion: 1,
@@ -1386,10 +1247,8 @@
             initTheme();
             initMenuDropdowns();
             initCanvasInteraction();
+            initProjectImport();
             loadProjectsFromStorage();
-            
-            GoogleDriveSync.init();
-            document.getElementById('btnConnectDrive').addEventListener('click', () => GoogleDriveSync.connect());
 
             requestAnimationFrame(renderLoop);
 
@@ -1470,7 +1329,6 @@
                 })
             }));
             localStorage.setItem('klyvero_projects', JSON.stringify(cleanProjects));
-            GoogleDriveSync.autoSaveToDrive();
         }
 
         function renderHomeScreen() {
@@ -1493,7 +1351,10 @@
                         </div>
                         <div class="project-card-actions">
                             <span style="font-size:10px; color:var(--klyvero-text);">${p.sequences.length} seq</span>
-                            <button class="btn-card-icon" style="color:var(--klyvero-red);" onclick="deleteProject('${p.id}', event)">🗑️</button>
+                            <div style="display:flex; gap:2px;">
+                                <button class="btn-card-icon" title="Exporter le projet (montage vidéo)" onclick="exportProjectFile('${p.id}', event)">💾</button>
+                                <button class="btn-card-icon" style="color:var(--klyvero-red);" onclick="deleteProject('${p.id}', event)">🗑️</button>
+                            </div>
                         </div>
                     `;
                     card.addEventListener('click', () => openProject(p.id));
@@ -1502,6 +1363,61 @@
             }
             document.getElementById('homeScreen').style.display = 'flex';
         }
+
+        function initProjectImport() {
+            const btnImport = document.getElementById('btnImportProject');
+            const fileInput = document.getElementById('projectFileInput');
+
+            btnImport.addEventListener('click', () => fileInput.click());
+            fileInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    try {
+                        const importedProject = JSON.parse(event.target.result);
+                        if (!importedProject.id || !importedProject.sequences) {
+                            showToast("Format de projet invalide.");
+                            return;
+                        }
+                        importedProject.id = 'proj_' + Date.now();
+                        importedProject.lastModified = Date.now();
+                        app.projects.push(importedProject);
+                        saveProjectsToStorage();
+                        renderHomeScreen();
+                        showToast("Projet importé avec succès !");
+                    } catch (err) {
+                        showToast("Erreur lors de la lecture du fichier de projet.");
+                    }
+                };
+                reader.readAsText(file);
+                fileInput.value = '';
+            });
+        }
+
+        window.exportProjectFile = function(projId, e) {
+            e.stopPropagation();
+            const proj = app.projects.find(p => p.id === projId);
+            if (!proj) return;
+
+            const cleanProject = {
+                ...proj,
+                assets: proj.assets.map(a => {
+                    const { element, ...rest } = a;
+                    return rest;
+                })
+            };
+
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(cleanProject, null, 2));
+            const downloadAnchor = document.createElement('a');
+            downloadAnchor.setAttribute("href", dataStr);
+            downloadAnchor.setAttribute("download", `${proj.name.replace(/\s+/g, '_')}.klyvero`);
+            document.body.appendChild(downloadAnchor);
+            downloadAnchor.click();
+            downloadAnchor.remove();
+            showToast("Fichier projet (.klyvero) exporté !");
+        };
 
         window.startRenameProject = function(projId, e) {
             e.stopPropagation();
