@@ -1227,7 +1227,8 @@
             pxPerSecond: 40,
             activeTool: 'select',
             needsCanvasUpdate: true,
-            isResizingCanvasClip: false
+            isResizingCanvasClip: false,
+            isExporting: false
         };
 
         const MAX_ALLOWED_SECONDS = 3600;
@@ -1966,6 +1967,10 @@
             overlay.style.display = 'flex';
             if (app.isPlaying) togglePlay();
 
+            app.isExporting = true;
+            const savedSelectedClipId = app.selectedClipId;
+            app.selectedClipId = null;
+
             const canvasStream = canvas.captureStream(app.fps);
             const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             const audioDestination = audioCtx.createMediaStreamDestination();
@@ -2014,27 +2019,10 @@
 
             const totalSteps = Math.max(1, Math.ceil(totalDuration * app.fps));
             let currentStep = 0;
-            const frameDuration = 1000 / app.fps;
+            const dt = 1 / app.fps;
 
-            const exportInterval = setInterval(() => {
-                currentStep++;
-                const progress = Math.min(100, Math.round((currentStep / totalSteps) * 100));
-                fill.style.width = progress + '%';
-                percentText.innerText = progress + '%';
-                framesText.innerText = `${currentStep} / ${totalSteps}`;
-
-                app.currentTime = (currentStep / totalSteps) * totalDuration;
-                
-                activeAudioNodes.forEach(({ clip, gainNode }) => {
-                    const isActive = app.currentTime >= clip.startTime && app.currentTime < (clip.startTime + clip.duration);
-                    const vol = (isActive && clip.audio && !clip.audio.muted) ? clip.audio.volume : 0;
-                    gainNode.gain.setValueAtTime(vol, audioCtx.currentTime);
-                });
-
-                app.needsCanvasUpdate = true;
-
+            async function renderExportStep() {
                 if (currentStep >= totalSteps) {
-                    clearInterval(exportInterval);
                     mediaRecorder.stop();
                     mediaRecorder.onstop = () => {
                         audioCtx.close();
@@ -2048,11 +2036,61 @@
                         document.body.removeChild(a);
                         URL.revokeObjectURL(url);
 
+                        app.isExporting = false;
+                        app.selectedClipId = savedSelectedClipId;
+                        app.needsCanvasUpdate = true;
+
                         overlay.style.display = 'none';
                         showToast("Exportation terminée !");
                     };
+                    return;
                 }
-            }, frameDuration);
+
+                currentStep++;
+                app.currentTime = currentStep * dt;
+
+                const pendingVideoLoads = [];
+                if (app.activeSequence) {
+                    app.activeSequence.timeline.forEach(clip => {
+                        if (clip.type === 'video' && clip.asset && clip.asset.element) {
+                            const video = clip.asset.element;
+                            const internalTime = (app.currentTime - clip.startTime) + clip.offsetTime;
+                            if (app.currentTime >= clip.startTime && app.currentTime < (clip.startTime + clip.duration)) {
+                                if (Math.abs(video.currentTime - internalTime) > 0.01) {
+                                    video.currentTime = internalTime;
+                                    pendingVideoLoads.push(new Promise(resolve => {
+                                        const onSeeked = () => {
+                                            video.removeEventListener('seeked', onSeeked);
+                                            resolve();
+                                        };
+                                        video.addEventListener('seeked', onSeeked);
+                                    }));
+                                }
+                            }
+                        }
+                    });
+                }
+
+                await Promise.all(pendingVideoLoads);
+
+                activeAudioNodes.forEach(({ clip, gainNode }) => {
+                    const isActive = app.currentTime >= clip.startTime && app.currentTime < (clip.startTime + clip.duration);
+                    const vol = (isActive && clip.audio && !clip.audio.muted) ? clip.audio.volume : 0;
+                    gainNode.gain.setValueAtTime(vol, audioCtx.currentTime);
+                });
+
+                renderFrame();
+                updateUIFast();
+
+                const progress = Math.min(100, Math.round((currentStep / totalSteps) * 100));
+                fill.style.width = progress + '%';
+                percentText.innerText = progress + '%';
+                framesText.innerText = `${currentStep} / ${totalSteps}`;
+
+                setTimeout(renderExportStep, 0);
+            }
+
+            renderExportStep();
         }
 
         // --- INTERACTION TACTILE ET CANVAS POUR REDIMENSIONNER ---
@@ -2158,7 +2196,7 @@
 
         // --- OPTIMISATION DU MOTEUR DE RENDU SANS LAGS (VideoSync Engine) ---
         function renderLoop(timestamp) {
-            if (app.isPlaying) {
+            if (app.isPlaying && !app.isExporting) {
                 if (!app.lastFrameTime) app.lastFrameTime = timestamp;
                 const delta = (timestamp - app.lastFrameTime) / 1000;
                 app.lastFrameTime = timestamp;
@@ -2166,7 +2204,7 @@
                 app.needsCanvasUpdate = true;
             }
 
-            if (app.needsCanvasUpdate) {
+            if (app.needsCanvasUpdate && !app.isExporting) {
                 renderFrame();
                 updateUIFast();
                 app.needsCanvasUpdate = false;
@@ -2192,17 +2230,19 @@
 
                 activeClips.forEach(clip => {
                     if (clip.type === 'audio' && clip.asset && clip.asset.element) {
-                        const audioElem = clip.asset.element;
-                        const internalTime = (app.currentTime - clip.startTime) + clip.offsetTime;
-                        if (Math.abs(audioElem.currentTime - internalTime) > 0.15) {
-                            audioElem.currentTime = internalTime;
-                        }
-                        const vol = (clip.audio && !clip.audio.muted) ? clip.audio.volume : 0;
-                        audioElem.volume = vol;
-                        if (app.isPlaying && audioElem.paused && vol > 0) {
-                            audioElem.play().catch(() => {});
-                        } else if ((!app.isPlaying || vol === 0) && !audioElem.paused) {
-                            audioElem.pause();
+                        if (!app.isExporting) {
+                            const audioElem = clip.asset.element;
+                            const internalTime = (app.currentTime - clip.startTime) + clip.offsetTime;
+                            if (Math.abs(audioElem.currentTime - internalTime) > 0.15) {
+                                audioElem.currentTime = internalTime;
+                            }
+                            const vol = (clip.audio && !clip.audio.muted) ? clip.audio.volume : 0;
+                            audioElem.volume = vol;
+                            if (app.isPlaying && audioElem.paused && vol > 0) {
+                                audioElem.play().catch(() => {});
+                            } else if ((!app.isPlaying || vol === 0) && !audioElem.paused) {
+                                audioElem.pause();
+                            }
                         }
                         return;
                     }
@@ -2238,14 +2278,16 @@
                         const vol = (clip.audio && !clip.audio.muted) ? clip.audio.volume : 0;
                         video.volume = vol;
 
-                        if (Math.abs(video.currentTime - internalTime) > 0.15) {
-                            video.currentTime = internalTime;
-                        }
+                        if (!app.isExporting) {
+                            if (Math.abs(video.currentTime - internalTime) > 0.15) {
+                                video.currentTime = internalTime;
+                            }
 
-                        if (app.isPlaying && video.paused) {
-                            video.play().catch(() => {});
-                        } else if (!app.isPlaying && !video.paused) {
-                            video.pause();
+                            if (app.isPlaying && video.paused) {
+                                video.play().catch(() => {});
+                            } else if (!app.isPlaying && !video.paused) {
+                                video.pause();
+                            }
                         }
 
                         if (video.readyState >= 2) ctx.drawImage(video, -drawW / 2, -drawH / 2, drawW, drawH);
@@ -2260,7 +2302,7 @@
                     }
 
                     // Encadrement de sélection & Poignée de redimensionnement (Resize Handle)
-                    if (app.selectedClipId === clip.id) {
+                    if (app.selectedClipId === clip.id && !app.isExporting) {
                         ctx.strokeStyle = '#6366f1';
                         ctx.lineWidth = 2;
                         ctx.strokeRect(-drawW / 2, -drawH / 2, drawW, drawH);
@@ -2341,10 +2383,10 @@
 
         window.addEventListener('keydown', (e) => {
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
-            if (e.key === ' ' || e.code === 'Space') { e.preventDefault(); togglePlay(); }
-            else if (e.key === 'c' || e.key === 'C') setTool('razor');
-            else if (e.key === 'v' || e.key === 'V') setTool('select');
-            else if (e.key === 'Delete' || e.key === 'Backspace') deleteSelectedClip();
+            if (e.key === ' ') {
+                e.preventDefault();
+                togglePlay();
+            }
         });
 
         window.addEventListener('DOMContentLoaded', bootSystemPerformance);
