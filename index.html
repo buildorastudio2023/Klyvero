@@ -2315,8 +2315,8 @@
                 const coords = getCanvasCoords(e);
                 const centerX = canvas.width / 2 + clip.transform.posX;
                 const centerY = canvas.height / 2 + clip.transform.posY;
-                const hw = clip.width / 2;
-                const hh = clip.height / 2;
+                const hw = (clip.width * (clip.scale || 100) / 100) / 2;
+                const hh = (clip.height * (clip.scale || 100) / 100) / 2;
 
                 const handleX = centerX + hw;
                 const handleY = centerY + hh;
@@ -2378,98 +2378,108 @@
             window.addEventListener('mouseup', stopInteraction);
 
             monitorWrapper.addEventListener('touchstart', startInteraction, { passive: false });
-            window.addEventListener('touchmove', moveInteraction, { passive: true });
+            window.addEventListener('touchmove', moveInteraction, { passive: false });
             window.addEventListener('touchend', stopInteraction);
         }
 
+        function formatTimecode(sec) {
+            const hrs = Math.floor(sec / 3600);
+            const mins = Math.floor((sec % 3600) / 60);
+            const secs = Math.floor(sec % 60);
+            const frames = Math.floor((sec % 1) * app.fps);
+            return `${String(hrs).padStart(2,'0')}:${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}:${String(frames).padStart(2,'0')}`;
+        }
+
         function updateUIFast() {
-            const head = document.getElementById('playheadHead');
-            const line = document.getElementById('playheadLine');
-            const posPx = app.currentTime * app.pxPerSecond;
+            document.getElementById('tcDisplay').innerText = formatTimecode(app.currentTime);
+            const playheadHead = document.getElementById('playheadHead');
+            const playheadLine = document.getElementById('playheadLine');
+            const posX = app.currentTime * app.pxPerSecond;
 
-            head.style.transform = `translateX(${posPx}px)`;
-            line.style.transform = `translateX(${posPx}px)`;
-
-            const totalMs = Math.floor(app.currentTime * 1000);
-            const hrs = String(Math.floor(totalMs / 3600000)).padStart(2, '0');
-            const mins = String(Math.floor((totalMs % 3600000) / 60000)).padStart(2, '0');
-            const secs = String(Math.floor((totalMs % 60000) / 1000)).padStart(2, '0');
-            const frames = String(Math.floor((totalMs % 1000) / (1000 / app.fps))).padStart(2, '0');
-
-            document.getElementById('tcDisplay').innerText = `${hrs}:${mins}:${secs}:${frames}`;
+            playheadHead.style.transform = `translateX(${posX}px)`;
+            playheadLine.style.transform = `translateX(${posX}px)`;
         }
 
-        function applyFilterStyle(filterType, brightness, contrast, saturate) {
-            let base = `brightness(${brightness}%) contrast(${contrast}%) saturate(${saturate}%)`;
-            switch (filterType) {
-                case 'grayscale': return base + ' grayscale(100%)';
-                case 'sepia': return base + ' sepia(100%)';
-                case 'invert': return base + ' invert(100%)';
-                case 'blur': return base + ' blur(5px)';
-                case 'hue-rotate': return base + ' hue-rotate(180deg)';
-                case 'vivid': return base + ' saturate(200%) contrast(120%)';
-                case 'vintage': return base + ' sepia(50%) hue-rotate(-30deg) contrast(90%)';
-                case 'cold': return base + ' hue-rotate(180deg) saturate(80%)';
-                case 'dramatic': return base + ' contrast(180%) brightness(90%)';
-                case 'posterize': return base + ' contrast(250%) saturate(150%)';
-                default: return base;
+        function applyFilterToContext(ctx, color) {
+            if (!color) return;
+            let filterString = `brightness(${color.brightness !== undefined ? color.brightness : 100}%) contrast(${color.contrast !== undefined ? color.contrast : 100}%) saturate(${color.saturate !== undefined ? color.saturate : 100}%)`;
+
+            switch (color.filter) {
+                case 'grayscale': filterString += ' grayscale(100%)'; break;
+                case 'sepia': filterString += ' sepia(100%)'; break;
+                case 'invert': filterString += ' invert(100%)'; break;
+                case 'blur': filterString += ' blur(4px)'; break;
+                case 'hue-rotate': filterString += ' hue-rotate(90deg)'; break;
+                case 'vivid': filterString += ' saturate(200%) contrast(120%)'; break;
+                case 'vintage': filterString += ' sepia(50%) contrast(110%) brightness(90%)'; break;
+                case 'cold': filterString += ' hue-rotate(180deg) saturate(80%)'; break;
+                case 'dramatic': filterString += ' contrast(180%) brightness(80%)'; break;
+                case 'posterize': filterString += ' contrast(200%) saturate(150%)'; break;
             }
+            ctx.filter = filterString;
         }
 
-        function applyTransition(clip, progress) {
-            const transType = clip.transition ? clip.transition.type : 'none';
-            let alpha = 1;
-            let transX = 0;
-            let transY = 0;
-            let scaleFactor = 1;
-            let rotAngle = 0;
-            let blurPx = 0;
+        function applyTransition(ctx, clip, progress, drawCallback) {
+            ctx.save();
+            const tType = clip.transition ? clip.transition.type : 'none';
+            const w = canvas.width;
+            const h = canvas.height;
 
-            if (transType !== 'none') {
-                const t = Math.min(1, Math.max(0, progress));
-                switch (transType) {
-                    case 'fade':
-                        alpha = t;
-                        break;
-                    case 'slide-left':
-                        transX = (1 - t) * -canvas.width;
-                        break;
-                    case 'slide-right':
-                        transX = (1 - t) * canvas.width;
-                        break;
-                    case 'slide-top':
-                        transY = (1 - t) * -canvas.height;
-                        break;
-                    case 'slide-bottom':
-                        transY = (1 - t) * canvas.height;
-                        break;
-                    case 'zoom-in':
-                        scaleFactor = t;
-                        alpha = t;
-                        break;
-                    case 'zoom-out':
-                        scaleFactor = 1 + (1 - t);
-                        alpha = t;
-                        break;
-                    case 'rotate':
-                        rotAngle = (1 - t) * Math.PI * 2;
-                        alpha = t;
-                        break;
-                    case 'blur-in':
-                        blurPx = (1 - t) * 15;
-                        alpha = t;
-                        break;
-                    case 'flash':
-                        alpha = t;
-                        if (t < 0.3) {
-                            ctx.fillStyle = '#ffffff';
-                            ctx.fillRect(0, 0, canvas.width, canvas.height);
-                        }
-                        break;
-                }
+            switch (tType) {
+                case 'fade':
+                    ctx.globalAlpha = progress;
+                    drawCallback();
+                    break;
+                case 'slide-left':
+                    ctx.translate((1 - progress) * w, 0);
+                    drawCallback();
+                    break;
+                case 'slide-right':
+                    ctx.translate((progress - 1) * w, 0);
+                    drawCallback();
+                    break;
+                case 'slide-top':
+                    ctx.translate(0, (1 - progress) * h);
+                    drawCallback();
+                    break;
+                case 'slide-bottom':
+                    ctx.translate(0, (progress - 1) * h);
+                    drawCallback();
+                    break;
+                case 'zoom-in':
+                    ctx.translate(w / 2, h / 2);
+                    ctx.scale(progress, progress);
+                    ctx.translate(-w / 2, -h / 2);
+                    drawCallback();
+                    break;
+                case 'zoom-out':
+                    ctx.translate(w / 2, h / 2);
+                    ctx.scale(2 - progress, 2 - progress);
+                    ctx.translate(-w / 2, -h / 2);
+                    drawCallback();
+                    break;
+                case 'rotate':
+                    ctx.translate(w / 2, h / 2);
+                    ctx.rotate((1 - progress) * Math.PI * 2);
+                    ctx.translate(-w / 2, -h / 2);
+                    drawCallback();
+                    break;
+                case 'blur-in':
+                    ctx.filter = `blur(${(1 - progress) * 20}px)`;
+                    drawCallback();
+                    break;
+                case 'flash':
+                    drawCallback();
+                    if (progress < 0.5) {
+                        ctx.fillStyle = `rgba(255, 255, 255, ${(0.5 - progress) * 2})`;
+                        ctx.fillRect(0, 0, w, h);
+                    }
+                    break;
+                default:
+                    drawCallback();
+                    break;
             }
-
-            return { alpha, transX, transY, scaleFactor, rotAngle, blurPx };
+            ctx.restore();
         }
 
         function renderFrame() {
@@ -2478,90 +2488,121 @@
 
             if (!app.activeSequence) return;
 
-            const activeClips = app.activeSequence.timeline.filter(clip => 
-                app.currentTime >= clip.startTime && app.currentTime < (clip.startTime + clip.duration)
-            );
+            const activeClips = app.activeSequence.timeline.filter(c => {
+                return app.currentTime >= c.startTime && app.currentTime < (c.startTime + c.duration);
+            });
+
+            activeClips.sort((a, b) => {
+                const order = { 'A1': 0, 'V1': 1, 'V2': 2, 'TXT': 3 };
+                return (order[a.track] || 0) - (order[b.track] || 0);
+            });
 
             activeClips.forEach(clip => {
-                ctx.save();
+                const renderClipBody = () => {
+                    ctx.save();
+                    const cx = canvas.width / 2 + (clip.transform.posX || 0);
+                    const cy = canvas.height / 2 + (clip.transform.posY || 0);
+                    const scaleFactor = (clip.scale || 100) / 100;
+                    const renderW = clip.width * scaleFactor;
+                    const renderH = clip.height * scaleFactor;
 
-                const clipProgress = app.currentTime - clip.startTime;
-                const transDuration = (clip.transition && clip.transition.duration) ? clip.transition.duration : 0.5;
-                const isTransitioning = clipProgress < transDuration;
-                const transProgress = isTransitioning ? clipProgress / transDuration : 1;
+                    ctx.translate(cx, cy);
+                    if (clip.transform.rotation) {
+                        ctx.rotate((clip.transform.rotation * Math.PI) / 180);
+                    }
 
-                const trans = applyTransition(clip, transProgress);
+                    applyFilterToContext(ctx, clip.color);
 
-                ctx.globalAlpha = trans.alpha;
-
-                const centerX = canvas.width / 2 + clip.transform.posX + trans.transX;
-                const centerY = canvas.height / 2 + clip.transform.posY + trans.transY;
-
-                ctx.translate(centerX, centerY);
-
-                const totalRotation = ((clip.transform.rotation || 0) * Math.PI / 180) + trans.rotAngle;
-                ctx.rotate(totalRotation);
-
-                const totalScale = ((clip.scale || 100) / 100) * trans.scaleFactor;
-                ctx.scale(totalScale, totalScale);
-
-                const filterColor = clip.color || { filter: 'none', brightness: 100, contrast: 100, saturate: 100 };
-                let filterStr = applyFilterStyle(filterColor.filter, filterColor.brightness, filterColor.contrast, filterColor.saturate);
-                if (trans.blurPx > 0) {
-                    filterStr += ` blur(${trans.blurPx}px)`;
-                }
-                ctx.filter = filterStr;
-
-                const renderW = clip.width;
-                const renderH = clip.height;
-
-                if (clip.type === 'text') {
-                    ctx.font = `bold ${clip.fontSize || 48}px sans-serif`;
-                    ctx.fillStyle = clip.colorHex || '#ffffff';
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
-                    ctx.fillText(clip.text || '', 0, 0);
-                } else if (clip.asset && clip.asset.element) {
-                    if (clip.type === 'video') {
+                    if (clip.type === 'video' && clip.asset && clip.asset.element) {
                         const video = clip.asset.element;
-                        const internalTime = (app.currentTime - clip.startTime) + clip.offsetTime;
-                        if (!app.isExporting && Math.abs(video.currentTime - internalTime) > 0.15) {
-                            video.currentTime = internalTime;
+                        const targetTime = (app.currentTime - clip.startTime) + clip.offsetTime;
+
+                        if (!app.isExporting && Math.abs(video.currentTime - targetTime) > 0.15) {
+                            video.currentTime = targetTime;
                         }
+
+                        if (!clip.audio || clip.audio.muted) {
+                            video.muted = true;
+                        } else {
+                            video.muted = false;
+                            video.volume = clip.audio.volume !== undefined ? clip.audio.volume : 1;
+                        }
+
+                        if (app.isPlaying && video.paused) video.play().catch(() => {});
+                        else if (!app.isPlaying && !video.paused) video.pause();
+
                         if (video.readyState >= 2) {
                             ctx.drawImage(video, -renderW / 2, -renderH / 2, renderW, renderH);
                         }
-                    } else if (clip.type === 'image') {
+                    } else if (clip.type === 'image' && clip.asset && clip.asset.element) {
                         ctx.drawImage(clip.asset.element, -renderW / 2, -renderH / 2, renderW, renderH);
+                    } else if (clip.type === 'text') {
+                        ctx.font = `bold ${clip.fontSize || 48}px sans-serif`;
+                        ctx.fillStyle = clip.colorHex || '#ffffff';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillText(clip.text || '', 0, 0);
+                    } else if (clip.type === 'audio' && clip.asset && clip.asset.element) {
+                        const audio = clip.asset.element;
+                        const targetTime = (app.currentTime - clip.startTime) + clip.offsetTime;
+
+                        if (!app.isExporting && Math.abs(audio.currentTime - targetTime) > 0.15) {
+                            audio.currentTime = targetTime;
+                        }
+
+                        if (!clip.audio || clip.audio.muted) {
+                            audio.muted = true;
+                        } else {
+                            audio.muted = false;
+                            audio.volume = clip.audio.volume !== undefined ? clip.audio.volume : 1;
+                        }
+
+                        if (app.isPlaying && audio.paused) audio.play().catch(() => {});
+                        else if (!app.isPlaying && !audio.paused) audio.pause();
                     }
+
+                    if (app.selectedClipId === clip.id && !app.isExporting) {
+                        ctx.filter = 'none';
+                        ctx.strokeStyle = '#6366f1';
+                        ctx.lineWidth = 2;
+                        ctx.strokeRect(-renderW / 2, -renderH / 2, renderW, renderH);
+
+                        ctx.fillStyle = '#ffffff';
+                        ctx.fillRect(renderW / 2 - 6, renderH / 2 - 6, 12, 12);
+                    }
+
+                    ctx.restore();
+                };
+
+                const elapsed = app.currentTime - clip.startTime;
+                const transDur = (clip.transition && clip.transition.duration) ? clip.transition.duration : 0.5;
+
+                if (clip.transition && clip.transition.type !== 'none' && elapsed < transDur) {
+                    const progress = Math.min(1, Math.max(0, elapsed / transDur));
+                    applyTransition(ctx, clip, progress, renderClipBody);
+                } else {
+                    renderClipBody();
                 }
-
-                ctx.filter = 'none';
-
-                if (app.selectedClipId === clip.id && !app.isExporting) {
-                    ctx.strokeStyle = '#6366f1';
-                    ctx.lineWidth = 2;
-                    ctx.strokeRect(-renderW / 2, -renderH / 2, renderW, renderH);
-
-                    ctx.fillStyle = '#ffffff';
-                    ctx.fillRect(renderW / 2 - 6, renderH / 2 - 6, 12, 12);
-                    ctx.strokeStyle = '#6366f1';
-                    ctx.strokeRect(renderW / 2 - 6, renderH / 2 - 6, 12, 12);
-                }
-
-                ctx.restore();
             });
+
+            const inactiveAudioAndVideo = [];
+            if (app.activeSequence) {
+                app.activeSequence.timeline.forEach(c => {
+                    const isActive = app.currentTime >= c.startTime && app.currentTime < (c.startTime + c.duration);
+                    if (!isActive && c.asset && c.asset.element) {
+                        if (c.type === 'video' || c.type === 'audio') {
+                            if (!c.asset.element.paused) c.asset.element.pause();
+                        }
+                    }
+                });
+            }
         }
 
         function renderLoop(timestamp) {
-            if (app.isPlaying) {
+            if (app.isPlaying && !app.isExporting) {
                 const delta = (timestamp - app.lastFrameTime) / 1000;
                 app.lastFrameTime = timestamp;
                 app.currentTime += delta;
-
-                if (calculateCurrentTotalDuration() > 0 && app.currentTime >= calculateCurrentTotalDuration()) {
-                    app.currentTime = 0;
-                }
                 app.needsCanvasUpdate = true;
             }
 
@@ -2574,7 +2615,7 @@
             requestAnimationFrame(renderLoop);
         }
 
-        window.addEventListener('load', bootSystemPerformance);
+        window.addEventListener('DOMContentLoaded', bootSystemPerformance);
     </script>
 </body>
 </html>
